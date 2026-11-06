@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.ai-analysis]
 verify_jwt = true
+
+[functions.system-check]
+verify_jwt = true
