@@ -139,7 +139,32 @@ $('cloudAnalyze').onclick=async()=>{
  }catch(e){$('cloudAiOutput').textContent='Gagal: '+(e.message||'Tidak dapat menghubungi AI cloud')+'. Periksa sesi login, OPENAI_API_KEY, dan kuota OpenAI.';$('cloudAiStatus').textContent='ERROR'}
  finally{$('cloudAnalyze').disabled=!(await sbClient.auth.getSession()).data.session}
 };
+
+async function loadJournal(){
+ const {data:{session}}=await sbClient.auth.getSession();
+ if(!session){$('journalStatus').textContent='LOGIN DIPERLUKAN';return}
+ $('journalStatus').textContent='MEMUAT';
+ const {data,error}=await sbClient.from('demo_trades').select('id,direction,timeframe,entry_price,stop_loss,take_profit,lot_size,status,opened_at').order('opened_at',{ascending:false}).limit(100);
+ if(error){$('journalStatus').textContent='ERROR: '+error.message;return}
+ $('journalStatus').textContent=(data||[]).length+' CATATAN';
+ $('journalRows').innerHTML=(data||[]).map(t=>'<tr><td>'+new Date(t.opened_at).toLocaleString()+'</td><td>'+t.direction+'</td><td>'+Number(t.entry_price).toFixed(2)+'</td><td>'+(t.stop_loss??'--')+' / '+(t.take_profit??'--')+'</td><td>'+Number(t.lot_size).toFixed(2)+'</td><td>'+t.status+'</td><td>'+(t.status==='OPEN'?'<button data-close="'+t.id+'">Tutup</button> ':'')+'<button data-delete="'+t.id+'">Hapus</button></td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada transaksi demo</td></tr>';
+}
+$('jSave').onclick=async()=>{
+ const {data:{session}}=await sbClient.auth.getSession();if(!session){alert('Login dulu');return}
+ const entry=Number($('jEntry').value),lot=Number($('jLot').value),sl=$('jSL').value?Number($('jSL').value):null,tp=$('jTP').value?Number($('jTP').value):null;
+ if(!(entry>0&&lot>0)||(sl!==null&&!(sl>0))||(tp!==null&&!(tp>0))){alert('Periksa nilai entry, lot, SL, TP');return}
+ const {error}=await sbClient.from('demo_trades').insert({user_id:session.user.id,symbol:'XAUUSD',direction:$('jDirection').value,timeframe:$('jTimeframe').value,entry_price:entry,stop_loss:sl,take_profit:tp,lot_size:lot,notes:$('jNotes').value||null});
+ if(error){alert(error.message);return} await loadJournal();
+};
+$('jRefresh').onclick=loadJournal;
+$('journalRows').onclick=async e=>{
+ const id=e.target.dataset.close,del=e.target.dataset.delete;
+ if(id){const exit=Number(window.prompt('Harga penutupan demo'));if(!(exit>0))return;const {error}=await sbClient.from('demo_trades').update({status:'CLOSED',exit_price:exit,closed_at:new Date().toISOString()}).eq('id',id);if(error)alert(error.message);else loadJournal()}
+ if(del&&window.confirm('Hapus catatan ini?')){const {error}=await sbClient.from('demo_trades').delete().eq('id',del);if(error)alert(error.message);else loadJournal()}
+};
+
 updateAuthUI();
+loadJournal();
 const SUPABASE_URL='https://rjnghnfmjnqhlswxocoi.supabase.co';
 const SUPABASE_PUBLIC_KEY='sb_publishable_U1Vbg1l2C0ReNBLs3NKJRQ_-84SAbk-';
 async function refreshLiveQuote(){
