@@ -136,7 +136,7 @@ function openSim(side){
 }
 function closePos(i,price,reason){const p=sim.positions[i];if(!p)return;const pnl=(price-p.entry)*p.units*(p.side==='BUY'?1:-1);sim.balance+=pnl;sim.realized+=pnl;sim.history.unshift({time:new Date().toLocaleString(),side:p.side,entry:p.entry,exit:price,pnl,reason});sim.positions.splice(i,1);saveSettings();render()}
 function clearFeed(error){
- feedOK=false;candles=[];analysis=null;setSignal('WAIT','wait');msg('livePrice','--');msg('livePriceMeta',error||'Feed belum tersedia');msg('livePriceStatus','FEED ERROR');msg('priceLabel','NO VERIFIED DATA');msg('lastPrice','--');msg('candleTime','--');msg('reason','Analisis dihentikan. Tidak ada candle simulasi pengganti.');draw();
+ feedOK=false;candles=[];analysis=null;setSignal('WAIT','wait');msg('livePrice','--');msg('livePriceMeta',error||'Feed belum tersedia');msg('livePriceStatus','FEED ERROR');msg('priceLabel','NO VERIFIED DATA');msg('lastPrice','--');msg('candleTime','--');msg('reason','Analisis dihentikan. Tidak ada candle simulasi pengganti.');render();
 }
 async function loadMarketCandles(){
  msg('livePriceStatus','MENGAMBIL DATA…');
