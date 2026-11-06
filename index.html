@@ -56,7 +56,7 @@
 (()=>{
 const $=id=>document.getElementById(id), key='hfm_autopilot_sim_v1';
 let state={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,day:new Date().toLocaleDateString(),tradesToday:0,realized:0,positions:[],history:[],auto:false,paused:true,tf:'M1',candles:[]};
-let analysis=null,externalData=false;
+let analysis=null,externalData=false,externalFeedFresh=false;
 function save(){try{localStorage.setItem(key,JSON.stringify(state))}catch(e){console.error('Gagal menyimpan simulasi',e);$('riskStatus').textContent='Penyimpanan lokal gagal: ruang browser mungkin penuh.'}}
 function load(){try{const s=JSON.parse(localStorage.getItem(key)||'null');if(s)state={...state,...s}}catch(e){} if(state.day!==new Date().toLocaleDateString()){state.day=new Date().toLocaleDateString();state.tradesToday=0;state.realized=0} }
 function rand(n){return (Math.sin(n*12.9898)*43758.5453)%1}
@@ -116,7 +116,7 @@ $('cloudAnalyze').onclick=async()=>{
  const a=analysis;if(!a){$('cloudAiOutput').textContent='Indikator belum siap.';return}
  $('cloudAnalyze').disabled=true;$('cloudAiStatus').textContent='MENGANALISIS…';$('cloudAiOutput').textContent='Mengambil berita global dan data makro, lalu menganalisis indikator…';
  try{
-  if(!externalData)throw new Error('Feed OHLC Twelve Data belum aktif. AI cloud hanya menerima candle yang diambil langsung oleh server.');
+  if(!externalData||!externalFeedFresh)throw new Error('Feed OHLC Twelve Data belum aktif atau sedang stale. Tunggu feed berhasil diperbarui.');
   const {data,error}=await sbClient.functions.invoke('ai-analysis',{body:{symbol:'XAUUSD',timeframe:state.tf}});
   if(error)throw error;
   if(!data?.ok)throw new Error(data?.error||'Analisis AI gagal.');
@@ -178,7 +178,7 @@ async function loadMarketCandles(){
   if(!Array.isArray(data.candles)||data.candles.length<200)throw new Error('Candle minimal 200 untuk indikator EMA200; tersedia '+(data.candles||[]).length);
   state.candles=data.candles.map(c=>({o:Number(c.o),h:Number(c.h),l:Number(c.l),c:Number(c.c),time:c.time})).filter(c=>[c.o,c.h,c.l,c.c].every(Number.isFinite));
   if(state.candles.length<200)throw new Error('Data OHLC valid kurang dari 200 candle.');
-  externalData=true;
+  externalData=true;externalFeedFresh=true;
   const last=state.candles[state.candles.length-1];
   value.textContent='
 load();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});setInterval(()=>{if(state.auto&&!state.paused)next()},5000);$('capital').value=state.capital;$('risk').value=state.risk;$('dailyLimit').value=state.dailyLimit;$('maxTrades').value=state.maxTrades;if(!state.candles.length)seed();analyze();render();save();
@@ -192,12 +192,13 @@ load();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js
   $('nextCandle').textContent='Refresh candle';
   analyze();render();save();
  }catch(error){
-  value.textContent='--';meta.textContent=error.message+' • Data lokal simulasi tidak dianggap feed live';
+  externalFeedFresh=false;
+  value.textContent='--';meta.textContent=error.message+' • Data lama tidak boleh dipakai untuk analisis cloud';
   badge.textContent='FEED ERROR';$('priceLabel').textContent='SIMULATED FALLBACK';
  }
 }
 $('nextCandle').textContent='Refresh candle';
-loadMarketCandles();setInterval(loadMarketCandles,300000);
+loadMarketCandles();setInterval(loadMarketCandles,900000);
 load();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});setInterval(()=>{if(state.auto&&!state.paused)next()},5000);$('capital').value=state.capital;$('risk').value=state.risk;$('dailyLimit').value=state.dailyLimit;$('maxTrades').value=state.maxTrades;if(!state.candles.length)seed();analyze();render();save();
 })();
 </script></body></html>
