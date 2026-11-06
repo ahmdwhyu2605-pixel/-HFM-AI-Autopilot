@@ -112,44 +112,7 @@ $('authLogout').onclick=async()=>{const {error}=await sbClient.auth.signOut();au
 sbClient.auth.onAuthStateChange(()=>{setTimeout(()=>{updateAuthUI();loadJournal()},0)});
 $('cloudAnalyze').onclick=async()=>{
  const sessionResult=await sbClient.auth.getSession(),session=sessionResult.data.session;
- if(!session){authMsg('Login dulu untuk menggunakan AI cloud.');await 
-// Cloud demo journal — every row is protected by Supabase RLS ownership policies.
-async function loadJournal(){
- const {data:{session}}=await sbClient.auth.getSession();
- if(!session){$('journalStatus').textContent='LOGIN DIPERLUKAN';$('journalRows').innerHTML='<tr><td colspan="7" class="empty">Login untuk melihat jurnal cloud</td></tr>';return}
- $('journalStatus').textContent='MEMUAT…';
- const {data,error}=await sbClient.from('demo_trades').select('id,symbol,direction,timeframe,entry_price,stop_loss,take_profit,lot_size,status,opened_at').order('opened_at',{ascending:false}).limit(100);
- if(error){$('journalStatus').textContent='ERROR';$('journalRows').innerHTML='<tr><td colspan="7" class="empty">'+error.message+'</td></tr>';return}
- $('journalStatus').textContent=(data||[]).length+' CATATAN';
- $('journalRows').innerHTML=(data||[]).map(t=>'<tr><td>'+new Date(t.opened_at).toLocaleString()+'</td><td>'+t.direction+'</td><td>'+Number(t.entry_price).toFixed(2)+'</td><td>'+(t.stop_loss??'--')+' / '+(t.take_profit??'--')+'</td><td>'+Number(t.lot_size).toFixed(2)+'</td><td>'+t.status+'</td><td>'+(t.status==='OPEN'?'<button data-jclose="'+t.id+'">Tutup</button> ':'')+'<button data-jdelete="'+t.id+'">Hapus</button></td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada transaksi demo</td></tr>';
-}
-$('jSave').onclick=async()=>{
- const {data:{session}}=await sbClient.auth.getSession();
- if(!session){alert('Login terlebih dahulu.');return}
- const entry=Number($('jEntry').value),lot=Number($('jLot').value),sl=$('jSL').value?Number($('jSL').value):null,tp=$('jTP').value?Number($('jTP').value):null;
- if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(lot)||lot<=0||(sl!==null&&(!Number.isFinite(sl)||sl<=0))||(tp!==null&&(!Number.isFinite(tp)||tp<=0))){alert('Periksa entry, lot, SL, dan TP.');return}
- $('jSave').disabled=true;
- const {error}=await sbClient.from('demo_trades').insert({user_id:session.user.id,symbol:'XAUUSD',direction:$('jDirection').value,timeframe:$('jTimeframe').value,entry_price:entry,stop_loss:sl,take_profit:tp,lot_size:lot,notes:$('jNotes').value.trim()||null});
- $('jSave').disabled=false;
- if(error){alert('Gagal menyimpan: '+error.message);return}
- $('jEntry').value='';$('jSL').value='';$('jTP').value='';$('jNotes').value='';
- await loadJournal();
-};
-$('jRefresh').onclick=loadJournal;
-$('journalRows').onclick=async e=>{
- const closeId=e.target.dataset.jclose,deleteId=e.target.dataset.jdelete;
- if(closeId){
-  const exit=Number(prompt('Masukkan harga penutupan demo:'));
-  if(!Number.isFinite(exit)||exit<=0)return;
-  const {error}=await sbClient.from('demo_trades').update({status:'CLOSED',exit_price:exit,closed_at:new Date().toISOString()}).eq('id',closeId);
-  if(error)alert('Gagal menutup: '+error.message);else await loadJournal();
- }
- if(deleteId&&confirm('Hapus catatan jurnal ini?')){
-  const {error}=await sbClient.from('demo_trades').delete().eq('id',deleteId);
-  if(error)alert('Gagal menghapus: '+error.message);else await loadJournal();
- }
-};
-\nupdateAuthUI();\nloadJournal();return}
+ if(!session){authMsg('Login dulu untuk menggunakan AI cloud.');await updateAuthUI();return}
  const a=analysis;if(!a){$('cloudAiOutput').textContent='Indikator belum siap.';return}
  $('cloudAnalyze').disabled=true;$('cloudAiStatus').textContent='MENGANALISIS…';$('cloudAiOutput').textContent='Mengambil berita global dan data makro, lalu menganalisis indikator…';
  try{
