@@ -61,152 +61,153 @@ html,body{width:100%;min-width:320px;min-height:100%;margin:0;overflow-x:hidden}
 </section><div class="footer">HFM AI AUTOPILOT • Simulasi edukasi • Tidak menjamin hasil trading</div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-(()=>{
-const $=id=>document.getElementById(id), key='hfm_autopilot_sim_v1';
-let state={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,day:new Date().toLocaleDateString(),tradesToday:0,realized:0,positions:[],history:[],auto:false,paused:true,tf:'M1',candles:[]};
-let analysis=null,externalData=false,externalFeedFresh=false;
-function save(){try{localStorage.setItem(key,JSON.stringify(state))}catch(e){console.error('Gagal menyimpan simulasi',e);$('riskStatus').textContent='Penyimpanan lokal gagal: ruang browser mungkin penuh.'}}
-function load(){try{const s=JSON.parse(localStorage.getItem(key)||'null');if(s)state={...state,...s}}catch(e){} if(state.day!==new Date().toLocaleDateString()){state.day=new Date().toLocaleDateString();state.tradesToday=0;state.realized=0} }
-function rand(n){return (Math.sin(n*12.9898)*43758.5453)%1}
-function tfFactor(){return ({M1:1,M5:5,M15:15,H1:60,H4:240})[state.tf]||1}
-function chartCandles(){if(externalData)return state.candles;let n=tfFactor(),out=[];for(let i=0;i<state.candles.length;i+=n){let g=state.candles.slice(i,Math.min(i+n,state.candles.length));if(!g.length)continue;out.push({o:g[0].o,c:g[g.length-1].c,h:Math.max(...g.map(x=>x.h)),l:Math.min(...g.map(x=>x.l))})}return out}
-function seed(){let p=2350;state.candles=[];for(let i=0;i<5760;i++){let o=p,c=o+(Math.sin(i*.71)*1.8+Math.cos(i*.19)*.9);let h=Math.max(o,c)+.4+Math.abs(Math.sin(i*2))*.7,l=Math.min(o,c)-.4-Math.abs(Math.cos(i*1.4))*.6;state.candles.push({o,h,l,c});p=c}}
-function ensureHistory(){if(!state.candles.length||state.candles.length>=5760)return;let old=state.candles,p=old[0].o,pre=[],need=5760-old.length;for(let i=need;i>0;i--){let drift=Math.sin(i*.071)*.18+Math.cos(i*.019)*.09,cl=p-drift,hi=Math.max(p,cl)+.25+Math.abs(Math.sin(i))*.2,lo=Math.min(p,cl)-.25-Math.abs(Math.cos(i))*.2;pre.push({o:p,c:cl,h:hi,l:lo});p=cl}state.candles=pre.concat(old)}
-function next(){if(externalData){loadMarketCandles();return}let p=state.candles.at(-1).c;let n=state.candles.length;let drift=Math.sin(n*.33)*.7+Math.cos(n*.12)*.35+(Math.random()-.5)*1.1;let c=p+drift;state.candles.push({o:p,c,h:Math.max(p,c)+Math.random()*.8,l:Math.min(p,c)-Math.random()*.8});if(state.candles.length>7000)state.candles.shift();markPositions();analyze();if(state.auto&&!state.paused&&state.positions.length===0&&analysis.signal!=='WAIT')open(analysis.signal);render();save()}
-function ema(vals,period){let k=2/(period+1),v=vals[0];for(let i=1;i<vals.length;i++)v=vals[i]*k+v*(1-k);return v}
-function indicators(){let cs=chartCandles(),cl=cs.map(x=>x.c);if(cs.length<3)throw new Error('Riwayat candle belum cukup');let gains=0,losses=0;for(let i=Math.max(1,cl.length-14);i<cl.length;i++){let d=cl[i]-cl[i-1];if(d>0)gains+=d;else losses-=d}let count=Math.min(14,cl.length-1),avgGain=gains/count,avgLoss=losses/count,rs=avgGain===0&&avgLoss===0?1:avgLoss===0?100:avgGain/avgLoss,rsi=100-100/(1+rs);let tr=[],pdm=[],mdm=[];for(let i=1;i<cs.length;i++){let a=cs[i],b=cs[i-1];tr.push(Math.max(a.h-a.l,Math.abs(a.h-b.c),Math.abs(a.l-b.c)));let up=a.h-b.h,down=b.l-a.l;pdm.push(up>down&&up>0?up:0);mdm.push(down>up&&down>0?down:0)}let period=14,atr=tr.slice(-period).reduce((a,b)=>a+b,0)/Math.min(period,tr.length);let adx=0,dx=[];if(tr.length>=period){let smTR=tr.slice(0,period).reduce((a,b)=>a+b,0),smP=pdm.slice(0,period).reduce((a,b)=>a+b,0),smM=mdm.slice(0,period).reduce((a,b)=>a+b,0);for(let i=period-1;i<tr.length;i++){if(i>=period){smTR=smTR-smTR/period+tr[i];smP=smP-smP/period+pdm[i];smM=smM-smM/period+mdm[i]}let pdi=smTR?100*smP/smTR:0,mdi=smTR?100*smM/smTR:0;dx.push(100*Math.abs(pdi-mdi)/(pdi+mdi||1))}adx=dx.slice(-period).reduce((a,b)=>a+b,0)/Math.min(period,dx.length)}return{e20:ema(cl.slice(-60),20),e50:ema(cl.slice(-80),50),e200:ema(cl,200),rsi,atr,adx}}
-function analyze(){let cs=chartCandles(),x=indicators(),price=cs.at(-1).c,trend=x.e20>x.e50&&price>x.e20,down=x.e20<x.e50&&price<x.e20;let signal='WAIT',why='Sinyal belum memenuhi filter trend dan momentum.';if(cs.length<200){why='WAIT: data historis timeframe ini belum mencapai 200 candle untuk pemanasan EMA200.'}else if(trend&&x.rsi>50&&x.rsi<70&&x.adx>12){signal='BUY';why='EMA20 di atas EMA50, harga di atas EMA20, RSI mendukung dan ADX menunjukkan momentum.'}else if(down&&x.rsi<50&&x.rsi>30&&x.adx>12){signal='SELL';why='EMA20 di bawah EMA50, harga di bawah EMA20, RSI mendukung dan ADX menunjukkan momentum.'}else if(x.rsi>=70||x.rsi<=30)why='WAIT: RSI berada di area ekstrem; hindari mengejar harga.';let dist=Math.max(x.atr*1.5,.8),entry=price,sl=signal==='BUY'?price-dist:price+dist,tp=signal==='BUY'?price+dist*2:price-dist*2;analysis={...x,signal,why,entry,sl,tp,price};$('signal').textContent=signal;$('signal').className='signal '+signal.toLowerCase();$('signalTime').textContent='Analisis rule-based • '+new Date().toLocaleTimeString();$('emaState').textContent=x.e20>x.e50?'Bullish':'Bearish';$('rsi').textContent=x.rsi.toFixed(1);$('adx').textContent=x.adx.toFixed(1);$('atr').textContent=x.atr.toFixed(2);$('reason').textContent=why;$('entry').textContent=price.toFixed(2);$('sl').textContent=signal==='WAIT'?'--':sl.toFixed(2);$('tp').textContent=signal==='WAIT'?'--':tp.toFixed(2);$('lastPrice').textContent=price.toFixed(2);$('candleTime').textContent=state.tf+' • '+cs.length+' candle agregat';}
-function money(n){return (n<0?'-':'')+'$'+Math.abs(n).toFixed(2)}
-function open(side){if(side!=='BUY'&&side!=='SELL'){alert('Arah transaksi tidak valid.');return}if(!analysis||!Number.isFinite(analysis.price)||!Number.isFinite(analysis.atr)){alert('Data simulasi belum siap. Tekan + Candle lalu coba lagi.');return}if(state.positions.length>=1||state.tradesToday>=state.maxTrades||dailyLossReached()){alert('Risk manager mengunci entry: cek posisi, batas transaksi, atau batas rugi harian.');return}let riskCash=state.capital*state.risk/100,dist=Math.max(analysis.atr*1.5,.8),entry=analysis.price,sl=side==='BUY'?entry-dist:entry+dist,tp=side==='BUY'?entry+dist*2:entry-dist*2;let size=riskCash/dist;if(!Number.isFinite(size)||size<=0){alert('Ukuran posisi simulasi tidak valid.');return}state.positions.push({side,entry,sl,tp,size,riskCash,opened:new Date().toLocaleTimeString()});state.tradesToday++;render();save()}
-function closePos(i,price,reason){let p=state.positions[i];if(!p)return;let pnl=(price-p.entry)*p.size*(p.side==='BUY'?1:-1);state.balance+=pnl;state.realized+=pnl;state.history.unshift({time:new Date().toLocaleString(),side:p.side,entry:p.entry,exit:price,pnl,reason});state.positions.splice(i,1);render();save()}
-function markPositions(){for(let i=state.positions.length-1;i>=0;i--){let p=state.positions[i],c=state.candles.at(-1);if(p.side==='BUY'){if(c.l<=p.sl)closePos(i,p.sl,'Stop loss');else if(c.h>=p.tp)closePos(i,p.tp,'Take profit')}else{if(c.h>=p.sl)closePos(i,p.sl,'Stop loss');else if(c.l<=p.tp)closePos(i,p.tp,'Take profit')}}}
-function render(){let float=floatingPnl();$('balance').textContent=money(state.balance);$('equity').textContent=money(state.balance+float);$('floating').textContent='Floating '+money(float);$('daily').textContent=money(state.realized);$('daily').className='value '+(state.realized>=0?'positive':'negative');$('tradecount').textContent=state.tradesToday+' / '+state.maxTrades+' transaksi';$('positionCount').textContent=state.positions.length+' posisi';$('autoStatus').textContent=state.auto&&!state.paused?'RUNNING':'PAUSED';$('autoStatus').className=state.auto&&!state.paused?'positive':'negative';$('engineState').textContent=state.auto&&!state.paused?'AUTOPILOT':'AKTIF';$('positions').innerHTML=state.positions.length?state.positions.map((p,i)=>{let pl=(state.candles.at(-1).c-p.entry)*p.size*(p.side==='BUY'?1:-1);return '<tr><td>'+p.side+'</td><td>'+p.entry.toFixed(2)+'</td><td>'+p.sl.toFixed(2)+'</td><td>'+p.tp.toFixed(2)+'</td><td>'+p.size.toFixed(3)+' sim</td><td class="'+(pl>=0?'positive':'negative')+'">'+money(pl)+'</td><td><button data-close="'+i+'">Close</button></td></tr>'}).join(''):'<tr><td colspan="7" class="empty">Belum ada posisi</td></tr>';$('history').innerHTML=state.history.length?state.history.slice(0,30).map(h=>'<tr><td>'+h.time+'</td><td>'+h.side+'</td><td>'+h.entry.toFixed(2)+'</td><td>'+h.exit.toFixed(2)+'</td><td class="'+(h.pnl>=0?'positive':'negative')+'">'+money(h.pnl)+'</td><td>'+h.reason+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Belum ada riwayat</td></tr>';draw()}
-function draw(){let cv=$('chart'),rect=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;cv.width=rect.width*dpr;cv.height=rect.height*dpr;let c=cv.getContext('2d');c.scale(dpr,dpr);let w=rect.width,h=rect.height,cs=chartCandles().slice(-55),min=Math.min(...cs.map(x=>x.l)),max=Math.max(...cs.map(x=>x.h)),pad=14,scale=(h-2*pad)/(max-min||1);c.clearRect(0,0,w,h);c.strokeStyle='#1e2b41';c.lineWidth=1;for(let i=0;i<5;i++){let y=pad+i*(h-2*pad)/4;c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke()}let step=w/cs.length,bw=Math.max(3,step*.58);cs.forEach((x,i)=>{let xx=i*step+step/2,yo=pad+(max-x.o)*scale,yc=pad+(max-x.c)*scale,yh=pad+(max-x.h)*scale,yl=pad+(max-x.l)*scale;let up=x.c>=x.o;c.strokeStyle=up?'#28d79a':'#ff647c';c.fillStyle=c.strokeStyle;c.beginPath();c.moveTo(xx,yh);c.lineTo(xx,yl);c.stroke();c.fillRect(xx-bw/2,Math.min(yo,yc),bw,Math.max(1,Math.abs(yc-yo)))})}
-$('buy').onclick=()=>open('BUY');$('sell').onclick=()=>open('SELL');$('closeAll').onclick=()=>{for(let i=state.positions.length-1;i>=0;i--)closePos(i,state.candles.at(-1).c,'Manual close')};$('kill').onclick=()=>{state.auto=false;state.paused=true;for(let i=state.positions.length-1;i>=0;i--)closePos(i,state.candles.at(-1).c,'Kill switch');render();save()};$('toggleAuto').onclick=()=>{if(!state.auto||state.paused){if(!confirm('Aktifkan autopilot SIMULASI? Tidak ada order ke HFM.'))return;state.auto=true;state.paused=false}else{state.paused=true}render();save()};$('nextCandle').onclick=next;$('timeframes').onclick=e=>{let tf=e.target.dataset.tf;if(!tf)return;state.tf=tf;document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));if(externalData)loadMarketCandles();else{$('priceLabel').textContent='SIMULATED '+tf+' • bukan feed broker';analyze();render();save()}};$('positions').onclick=e=>{let i=e.target.dataset.close;if(i!==undefined)closePos(+i,state.candles.at(-1).c,'Manual close')};$('saveSettings').onclick=()=>{let capital=+$('capital').value,risk=+$('risk').value,limit=+$('dailyLimit').value,trades=+$('maxTrades').value;if(!Number.isFinite(capital)||!Number.isFinite(risk)||!Number.isFinite(limit)||!Number.isFinite(trades)||capital<10||capital>1000000||risk<.1||risk>2||limit<.5||limit>5||trades<1||trades>10){alert('Pengaturan tidak valid. Modal $10–$1.000.000, risiko 0,1–2%, batas rugi 0,5–5%, maksimal 1–10 transaksi.');return}state.capital=capital;state.risk=risk;state.dailyLimit=limit;state.maxTrades=Math.min(10,Math.floor(trades));$('riskStatus').textContent='Tersimpan. Risiko per trade '+risk+'% (~'+money(capital*risk/100)+'). Lot broker nyata tidak dihitung dari simulasi ini.';render();save()};$('reset').onclick=()=>{if(!confirm('Hapus seluruh riwayat dan reset semua pengaturan simulasi ke nilai awal $100?'))return;state={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,day:new Date().toLocaleDateString(),tradesToday:0,realized:0,positions:[],history:[],auto:false,paused:true,tf:'M1',candles:[]};seed();$('capital').value=100;$('risk').value=.5;$('dailyLimit').value=2;$('maxTrades').value=3;analyze();render();save()};window.addEventListener('resize',draw);
-load();ensureHistory();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});setInterval(()=>{if(state.auto&&!state.paused)next()},5000);$('capital').value=state.capital;$('risk').value=state.risk;$('dailyLimit').value=state.dailyLimit;$('maxTrades').value=state.maxTrades;if(!state.candles.length)seed();analyze();render();save();
-})();
-</script></body></html>:'
-function open(side){if(side!=='BUY'&&side!=='SELL'){alert('Arah transaksi tidak valid.');return}if(!analysis||!Number.isFinite(analysis.price)||!Number.isFinite(analysis.atr)){alert('Data simulasi belum siap. Tekan + Candle lalu coba lagi.');return}if(state.positions.length>=1||state.tradesToday>=state.maxTrades||state.realized<=-state.capital*state.dailyLimit/100){alert('Risk manager mengunci entry: cek posisi, batas transaksi, atau batas rugi harian.');return}let riskCash=state.capital*state.risk/100,dist=Math.max(analysis.atr*1.5,.8),entry=analysis.price,sl=side==='BUY'?entry-dist:entry+dist,tp=side==='BUY'?entry+dist*2:entry-dist*2;let size=riskCash/dist;if(!Number.isFinite(size)||size<=0){alert('Ukuran posisi simulasi tidak valid.');return}state.positions.push({side,entry,sl,tp,size,riskCash,opened:new Date().toLocaleTimeString()});state.tradesToday++;render();save()}
-function closePos(i,price,reason){let p=state.positions[i];if(!p)return;let pnl=(price-p.entry)*p.size*(p.side==='BUY'?1:-1);state.balance+=pnl;state.realized+=pnl;state.history.unshift({time:new Date().toLocaleString(),side:p.side,entry:p.entry,exit:price,pnl,reason});state.positions.splice(i,1);render();save()}
-function markPositions(){for(let i=state.positions.length-1;i>=0;i--){let p=state.positions[i],c=state.candles.at(-1);if(p.side==='BUY'){if(c.l<=p.sl)closePos(i,p.sl,'Stop loss');else if(c.h>=p.tp)closePos(i,p.tp,'Take profit')}else{if(c.h>=p.sl)closePos(i,p.sl,'Stop loss');else if(c.l<=p.tp)closePos(i,p.tp,'Take profit')}}}
-function render(){let float=state.positions.reduce((s,p)=>s+(state.candles.at(-1).c-p.entry)*p.size*(p.side==='BUY'?1:-1),0);$('balance').textContent=money(state.balance);$('equity').textContent=money(state.balance+float);$('floating').textContent='Floating '+money(float);$('daily').textContent=money(state.realized);$('daily').className='value '+(state.realized>=0?'positive':'negative');$('tradecount').textContent=state.tradesToday+' / '+state.maxTrades+' transaksi';$('positionCount').textContent=state.positions.length+' posisi';$('autoStatus').textContent=state.auto&&!state.paused?'RUNNING':'PAUSED';$('autoStatus').className=state.auto&&!state.paused?'positive':'negative';$('engineState').textContent=state.auto&&!state.paused?'AUTOPILOT':'AKTIF';$('positions').innerHTML=state.positions.length?state.positions.map((p,i)=>{let pl=(state.candles.at(-1).c-p.entry)*p.size*(p.side==='BUY'?1:-1);return '<tr><td>'+p.side+'</td><td>'+p.entry.toFixed(2)+'</td><td>'+p.sl.toFixed(2)+'</td><td>'+p.tp.toFixed(2)+'</td><td>'+p.size.toFixed(3)+' sim</td><td class="'+(pl>=0?'positive':'negative')+'">'+money(pl)+'</td><td><button data-close="'+i+'">Close</button></td></tr>'}).join(''):'<tr><td colspan="7" class="empty">Belum ada posisi</td></tr>';$('history').innerHTML=state.history.length?state.history.slice(0,30).map(h=>'<tr><td>'+h.time+'</td><td>'+h.side+'</td><td>'+h.entry.toFixed(2)+'</td><td>'+h.exit.toFixed(2)+'</td><td class="'+(h.pnl>=0?'positive':'negative')+'">'+money(h.pnl)+'</td><td>'+h.reason+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Belum ada riwayat</td></tr>';draw()}
-function draw(){let cv=$('chart'),rect=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;cv.width=rect.width*dpr;cv.height=rect.height*dpr;let c=cv.getContext('2d');c.scale(dpr,dpr);let w=rect.width,h=rect.height,cs=state.candles.slice(-55),min=Math.min(...cs.map(x=>x.l)),max=Math.max(...cs.map(x=>x.h)),pad=14,scale=(h-2*pad)/(max-min||1);c.clearRect(0,0,w,h);c.strokeStyle='#1e2b41';c.lineWidth=1;for(let i=0;i<5;i++){let y=pad+i*(h-2*pad)/4;c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke()}let step=w/cs.length,bw=Math.max(3,step*.58);cs.forEach((x,i)=>{let xx=i*step+step/2,yo=pad+(max-x.o)*scale,yc=pad+(max-x.c)*scale,yh=pad+(max-x.h)*scale,yl=pad+(max-x.l)*scale;let up=x.c>=x.o;c.strokeStyle=up?'#28d79a':'#ff647c';c.fillStyle=c.strokeStyle;c.beginPath();c.moveTo(xx,yh);c.lineTo(xx,yl);c.stroke();c.fillRect(xx-bw/2,Math.min(yo,yc),bw,Math.max(1,Math.abs(yc-yo)))})}
-$('buy').onclick=()=>open('BUY');$('sell').onclick=()=>open('SELL');$('closeAll').onclick=()=>{for(let i=state.positions.length-1;i>=0;i--)closePos(i,state.candles.at(-1).c,'Manual close')};$('kill').onclick=()=>{state.auto=false;state.paused=true;for(let i=state.positions.length-1;i>=0;i--)closePos(i,state.candles.at(-1).c,'Kill switch');render();save()};$('toggleAuto').onclick=()=>{if(!state.auto||state.paused){if(!confirm('Aktifkan autopilot SIMULASI? Tidak ada order ke HFM.'))return;state.auto=true;state.paused=false}else{state.paused=true}render();save()};$('nextCandle').onclick=next;$('timeframes').onclick=e=>{let tf=e.target.dataset.tf;if(!tf)return;state.tf=tf;document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));analyze()};$('positions').onclick=e=>{let i=e.target.dataset.close;if(i!==undefined)closePos(+i,state.candles.at(-1).c,'Manual close')};$('saveSettings').onclick=()=>{let capital=+$('capital').value,risk=+$('risk').value,limit=+$('dailyLimit').value,trades=+$('maxTrades').value;if(!Number.isFinite(capital)||!Number.isFinite(risk)||!Number.isFinite(limit)||!Number.isFinite(trades)||capital<10||capital>1000000||risk<.1||risk>2||limit<.5||limit>5||trades<1||trades>10){alert('Pengaturan tidak valid. Modal $10–$1.000.000, risiko 0,1–2%, batas rugi 0,5–5%, maksimal 1–10 transaksi.');return}state.capital=capital;state.balance=capital+state.realized;state.risk=risk;state.dailyLimit=limit;state.maxTrades=Math.min(10,Math.floor(trades));$('riskStatus').textContent='Tersimpan. Risiko per trade '+risk+'% (~'+money(capital*risk/100)+'). Lot broker nyata tidak dihitung dari simulasi ini.';render();save()};$('reset').onclick=()=>{if(!confirm('Hapus seluruh riwayat dan reset semua pengaturan simulasi ke nilai awal $100?'))return;state={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,day:new Date().toLocaleDateString(),tradesToday:0,realized:0,positions:[],history:[],auto:false,paused:true,tf:'M1',candles:[]};seed();$('capital').value=100;$('risk').value=.5;$('dailyLimit').value=2;$('maxTrades').value=3;analyze();render();save()};window.addEventListener('resize',draw);
-load();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});setInterval(()=>{if(state.auto&&!state.paused)next()},5000);$('capital').value=state.capital;$('risk').value=state.risk;$('dailyLimit').value=state.dailyLimit;$('maxTrades').value=state.maxTrades;if(!state.candles.length)seed();analyze();render();save();
-})();
-</script></body></html>)+Math.abs(n).toFixed(2)}
-function floatingPnl(){return state.positions.reduce((s,p)=>s+(state.candles.at(-1).c-p.entry)*p.size*(p.side==='BUY'?1:-1),0)}
-function dailyLossReached(){return state.realized+floatingPnl()<=-state.capital*state.dailyLimit/100}
-function open(side){if(side!=='BUY'&&side!=='SELL'){alert('Arah transaksi tidak valid.');return}if(!analysis||!Number.isFinite(analysis.price)||!Number.isFinite(analysis.atr)){alert('Data simulasi belum siap. Tekan + Candle lalu coba lagi.');return}if(state.positions.length>=1||state.tradesToday>=state.maxTrades||state.realized<=-state.capital*state.dailyLimit/100){alert('Risk manager mengunci entry: cek posisi, batas transaksi, atau batas rugi harian.');return}let riskCash=state.capital*state.risk/100,dist=Math.max(analysis.atr*1.5,.8),entry=analysis.price,sl=side==='BUY'?entry-dist:entry+dist,tp=side==='BUY'?entry+dist*2:entry-dist*2;let size=riskCash/dist;if(!Number.isFinite(size)||size<=0){alert('Ukuran posisi simulasi tidak valid.');return}state.positions.push({side,entry,sl,tp,size,riskCash,opened:new Date().toLocaleTimeString()});state.tradesToday++;render();save()}
-function closePos(i,price,reason){let p=state.positions[i];if(!p)return;let pnl=(price-p.entry)*p.size*(p.side==='BUY'?1:-1);state.balance+=pnl;state.realized+=pnl;state.history.unshift({time:new Date().toLocaleString(),side:p.side,entry:p.entry,exit:price,pnl,reason});state.positions.splice(i,1);render();save()}
-function markPositions(){for(let i=state.positions.length-1;i>=0;i--){let p=state.positions[i],c=state.candles.at(-1);if(p.side==='BUY'){if(c.l<=p.sl)closePos(i,p.sl,'Stop loss');else if(c.h>=p.tp)closePos(i,p.tp,'Take profit')}else{if(c.h>=p.sl)closePos(i,p.sl,'Stop loss');else if(c.l<=p.tp)closePos(i,p.tp,'Take profit')}}}
-function render(){let float=state.positions.reduce((s,p)=>s+(state.candles.at(-1).c-p.entry)*p.size*(p.side==='BUY'?1:-1),0);$('balance').textContent=money(state.balance);$('equity').textContent=money(state.balance+float);$('floating').textContent='Floating '+money(float);$('daily').textContent=money(state.realized);$('daily').className='value '+(state.realized>=0?'positive':'negative');$('tradecount').textContent=state.tradesToday+' / '+state.maxTrades+' transaksi';$('positionCount').textContent=state.positions.length+' posisi';$('autoStatus').textContent=state.auto&&!state.paused?'RUNNING':'PAUSED';$('autoStatus').className=state.auto&&!state.paused?'positive':'negative';$('engineState').textContent=state.auto&&!state.paused?'AUTOPILOT':'AKTIF';$('positions').innerHTML=state.positions.length?state.positions.map((p,i)=>{let pl=(state.candles.at(-1).c-p.entry)*p.size*(p.side==='BUY'?1:-1);return '<tr><td>'+p.side+'</td><td>'+p.entry.toFixed(2)+'</td><td>'+p.sl.toFixed(2)+'</td><td>'+p.tp.toFixed(2)+'</td><td>'+p.size.toFixed(3)+' sim</td><td class="'+(pl>=0?'positive':'negative')+'">'+money(pl)+'</td><td><button data-close="'+i+'">Close</button></td></tr>'}).join(''):'<tr><td colspan="7" class="empty">Belum ada posisi</td></tr>';$('history').innerHTML=state.history.length?state.history.slice(0,30).map(h=>'<tr><td>'+h.time+'</td><td>'+h.side+'</td><td>'+h.entry.toFixed(2)+'</td><td>'+h.exit.toFixed(2)+'</td><td class="'+(h.pnl>=0?'positive':'negative')+'">'+money(h.pnl)+'</td><td>'+h.reason+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Belum ada riwayat</td></tr>';draw()}
-function draw(){let cv=$('chart'),rect=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;cv.width=rect.width*dpr;cv.height=rect.height*dpr;let c=cv.getContext('2d');c.scale(dpr,dpr);let w=rect.width,h=rect.height,cs=state.candles.slice(-55),min=Math.min(...cs.map(x=>x.l)),max=Math.max(...cs.map(x=>x.h)),pad=14,scale=(h-2*pad)/(max-min||1);c.clearRect(0,0,w,h);c.strokeStyle='#1e2b41';c.lineWidth=1;for(let i=0;i<5;i++){let y=pad+i*(h-2*pad)/4;c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke()}let step=w/cs.length,bw=Math.max(3,step*.58);cs.forEach((x,i)=>{let xx=i*step+step/2,yo=pad+(max-x.o)*scale,yc=pad+(max-x.c)*scale,yh=pad+(max-x.h)*scale,yl=pad+(max-x.l)*scale;let up=x.c>=x.o;c.strokeStyle=up?'#28d79a':'#ff647c';c.fillStyle=c.strokeStyle;c.beginPath();c.moveTo(xx,yh);c.lineTo(xx,yl);c.stroke();c.fillRect(xx-bw/2,Math.min(yo,yc),bw,Math.max(1,Math.abs(yc-yo)))})}
-$('buy').onclick=()=>open('BUY');$('sell').onclick=()=>open('SELL');$('closeAll').onclick=()=>{for(let i=state.positions.length-1;i>=0;i--)closePos(i,state.candles.at(-1).c,'Manual close')};$('kill').onclick=()=>{state.auto=false;state.paused=true;for(let i=state.positions.length-1;i>=0;i--)closePos(i,state.candles.at(-1).c,'Kill switch');render();save()};$('toggleAuto').onclick=()=>{if(!state.auto||state.paused){if(!confirm('Aktifkan autopilot SIMULASI? Tidak ada order ke HFM.'))return;state.auto=true;state.paused=false}else{state.paused=true}render();save()};$('nextCandle').onclick=next;$('timeframes').onclick=e=>{let tf=e.target.dataset.tf;if(!tf)return;state.tf=tf;document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));analyze()};$('positions').onclick=e=>{let i=e.target.dataset.close;if(i!==undefined)closePos(+i,state.candles.at(-1).c,'Manual close')};$('saveSettings').onclick=()=>{let capital=+$('capital').value,risk=+$('risk').value,limit=+$('dailyLimit').value,trades=+$('maxTrades').value;if(!Number.isFinite(capital)||!Number.isFinite(risk)||!Number.isFinite(limit)||!Number.isFinite(trades)||capital<10||capital>1000000||risk<.1||risk>2||limit<.5||limit>5||trades<1||trades>10){alert('Pengaturan tidak valid. Modal $10–$1.000.000, risiko 0,1–2%, batas rugi 0,5–5%, maksimal 1–10 transaksi.');return}state.capital=capital;state.balance=capital+state.realized;state.risk=risk;state.dailyLimit=limit;state.maxTrades=Math.min(10,Math.floor(trades));$('riskStatus').textContent='Tersimpan. Risiko per trade '+risk+'% (~'+money(capital*risk/100)+'). Lot broker nyata tidak dihitung dari simulasi ini.';render();save()};$('reset').onclick=()=>{if(!confirm('Hapus seluruh riwayat dan reset semua pengaturan simulasi ke nilai awal $100?'))return;state={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,day:new Date().toLocaleDateString(),tradesToday:0,realized:0,positions:[],history:[],auto:false,paused:true,tf:'M1',candles:[]};seed();$('capital').value=100;$('risk').value=.5;$('dailyLimit').value=2;$('maxTrades').value=3;analyze();render();save()};window.addEventListener('resize',draw);
-const sbClient=window.supabase.createClient('https://rjnghnfmjnqhlswxocoi.supabase.co','sb_publishable_U1Vbg1l2C0ReNBLs3NKJRQ_-84SAbk-');
-const authMsg=(m)=>$('authMessage').textContent=m;
-async function updateAuthUI(){
- const {data:{session}}=await sbClient.auth.getSession();
- $('authSignedOut').classList.toggle('hidden',!!session);
- $('authSignedIn').classList.toggle('hidden',!session);
- $('authStatus').textContent=session?'LOGIN AKTIF':'BELUM LOGIN';
- $('authUser').textContent=session?.user?.email||'';
- $('cloudAnalyze').disabled=!session;
- $('cloudAiStatus').textContent=session?'SIAP':'MENUNGGU LOGIN';
+(()=> {
+'use strict';
+const $=id=>document.getElementById(id);
+const KEY='hfm_autopilot_sim_v2';
+const URL='https://rjnghnfmjnqhlswxocoi.supabase.co';
+const PUBLIC_KEY='sb_publishable_U1Vbg1l2C0ReNBLs3NKJRQ_-84SAbk-';
+const TF_MS={M1:60000,M5:300000,M15:900000,H1:3600000,H4:14400000};
+const TF_API={M1:'1min',M5:'5min',M15:'15min',H1:'1h',H4:'4h'};
+let sb=null,session=null,candles=[],analysis=null,feedOK=false,feedAt=0,tf='M15';
+let sim={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,tradesToday:0,day:new Date().toISOString().slice(0,10),realized:0,positions:[],history:[]};
+function msg(id,s){const e=$(id);if(e)e.textContent=s}
+function money(n){return (n<0?'-$':'$')+Math.abs(Number(n)||0).toFixed(2)}
+function today(){return new Date().toISOString().slice(0,10)}
+function loadSettings(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');if(x)sim={...sim,...x,positions:[],history:x.history||[]}}catch(e){} if(sim.day!==today()){sim.day=today();sim.tradesToday=0;sim.realized=0} }
+function saveSettings(){try{localStorage.setItem(KEY,JSON.stringify(sim))}catch(e){msg('riskStatus','Tidak dapat menyimpan pengaturan di perangkat.')} }
+function timeframe(){return tf}
+function ema(a,p){if(a.length<p)return NaN;let k=2/(p+1),v=a[0];for(let i=1;i<a.length;i++)v=a[i]*k+v*(1-k);return v}
+function indicators(cs){
+ const close=cs.map(x=>x.c),n=cs.length;if(n<210)throw Error('Minimal 210 candle selesai diperlukan; tersedia '+n+'.');
+ const ch=close.slice(1).map((v,i)=>v-close[i]),g=ch.map(x=>Math.max(0,x)),l=ch.map(x=>Math.max(0,-x));
+ let ag=g.slice(0,14).reduce((a,b)=>a+b,0)/14,al=l.slice(0,14).reduce((a,b)=>a+b,0)/14;
+ for(let i=14;i<g.length;i++){ag=(ag*13+g[i])/14;al=(al*13+l[i])/14}
+ const rsi=al===0?100:100-100/(1+ag/al);
+ const tr=[],plus=[],minus=[];
+ for(let i=1;i<n;i++){const c=cs[i],p=cs[i-1],up=c.h-p.h,dn=p.l-c.l;tr.push(Math.max(c.h-c.l,Math.abs(c.h-p.c),Math.abs(c.l-p.c)));plus.push(up>dn&&up>0?up:0);minus.push(dn>up&&dn>0?dn:0)}
+ const atr=tr.slice(-14).reduce((a,b)=>a+b,0)/14;
+ let st=tr.slice(0,14).reduce((a,b)=>a+b,0),sp=plus.slice(0,14).reduce((a,b)=>a+b,0),sn=minus.slice(0,14).reduce((a,b)=>a+b,0),dx=[];
+ for(let i=13;i<tr.length;i++){if(i>13){st=st-st/14+tr[i];sp=sp-sp/14+plus[i];sn=sn-sn/14+minus[i]}const p=st?100*sp/st:0,m=st?100*sn/st:0;dx.push(100*Math.abs(p-m)/(p+m||1))}
+ const adx=dx.slice(-14).reduce((a,b)=>a+b,0)/Math.min(14,dx.length);
+ return {ema20:ema(close.slice(-100),20),ema50:ema(close.slice(-150),50),ema200:ema(close,200),rsi,atr,adx,price:close[n-1]};
 }
-$('authLogin').onclick=async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||!password){authMsg('Isi email dan password.');return}authMsg('Sedang masuk…');const {error}=await sbClient.auth.signInWithPassword({email,password});authMsg(error?error.message:'Login berhasil.');await updateAuthUI()};
-$('authRegister').onclick=async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||password.length<6){authMsg('Isi email valid dan password minimal 6 karakter.');return}authMsg('Membuat akun…');const {data,error}=await sbClient.auth.signUp({email,password,options:{emailRedirectTo:location.href.split('#')[0]}});if(error){authMsg(error.message);return}authMsg(data.session?'Akun dibuat dan login berhasil.':'Akun dibuat. Cek email untuk konfirmasi, lalu login.');await updateAuthUI()};
-$('authLogout').onclick=async()=>{const {error}=await sbClient.auth.signOut();authMsg(error?'Gagal keluar: '+error.message:'Berhasil keluar.');await updateAuthUI()};
-sbClient.auth.onAuthStateChange(()=>{setTimeout(()=>{updateAuthUI();loadJournal()},0)});
-$('cloudAnalyze').onclick=async()=>{
- const sessionResult=await sbClient.auth.getSession(),session=sessionResult.data.session;
- if(!session){authMsg('Login dulu untuk menggunakan AI cloud.');await updateAuthUI();return}
- const a=analysis;if(!a){$('cloudAiOutput').textContent='Indikator belum siap.';return}
- $('cloudAnalyze').disabled=true;$('cloudAiStatus').textContent='MENGANALISIS…';$('cloudAiOutput').textContent='Mengambil berita global dan data makro, lalu menganalisis indikator…';
+function setSignal(text,cls){const e=$('signal');e.textContent=text;e.className='signal '+cls}
+function analyze(){
+ if(!feedOK||candles.length<210){analysis=null;setSignal('WAIT','wait');msg('reason','Analisis dikunci: belum ada minimal 210 candle pasar yang valid dan selesai.');['entry','sl','tp'].forEach(x=>msg(x,'--'));return}
+ const x=indicators(candles),up=x.ema20>x.ema50&&x.price>x.ema20,down=x.ema20<x.ema50&&x.price<x.ema20;
+ let signal='WAIT',why='Belum ada konfluensi trend dan momentum yang cukup.';
+ if(up&&x.rsi>50&&x.rsi<68&&x.adx>=18) {signal='BUY';why='EMA20 > EMA50, harga di atas EMA20, RSI mendukung, ADX menunjukkan trend.'}
+ else if(down&&x.rsi<50&&x.rsi>32&&x.adx>=18){signal='SELL';why='EMA20 < EMA50, harga di bawah EMA20, RSI mendukung, ADX menunjukkan trend.'}
+ else if(x.rsi>=68||x.rsi<=32)why='WAIT: RSI mendekati area ekstrem; hindari mengejar harga.';
+ const dist=Math.max(x.atr*1.5,0.01);
+ analysis={...x,signal,entry:x.price,sl:signal==='BUY'?x.price-dist:signal==='SELL'?x.price+dist:null,tp:signal==='BUY'?x.price+dist*2:signal==='SELL'?x.price-dist*2:null};
+ setSignal(signal,signal.toLowerCase());msg('signalTime','Indikator dari candle selesai • '+new Date().toLocaleTimeString());
+ msg('emaState',x.ema20>x.ema50?'Bullish':'Bearish');msg('rsi',x.rsi.toFixed(1));msg('adx',x.adx.toFixed(1));msg('atr',x.atr.toFixed(2));msg('reason',why);
+ msg('entry',x.price.toFixed(2));msg('sl',analysis.sl===null?'--':analysis.sl.toFixed(2));msg('tp',analysis.tp===null?'--':analysis.tp.toFixed(2));msg('lastPrice',x.price.toFixed(2));
+}
+function draw(){
+ const cv=$('chart');if(!cv)return;const box=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(1,box.width),h=Math.max(1,box.height);
+ cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);const c=cv.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,h);
+ if(!feedOK||!candles.length){c.fillStyle='#91a2bd';c.font='13px system-ui';c.fillText('Menunggu feed OHLC valid…',12,24);return}
+ const cs=candles.slice(-70),lo=Math.min(...cs.map(x=>x.l)),hi=Math.max(...cs.map(x=>x.h)),pad=14,scale=(h-2*pad)/(hi-lo||1);
+ c.strokeStyle='#22314a';for(let i=0;i<5;i++){const y=pad+i*(h-2*pad)/4;c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke()}
+ const step=w/cs.length,bw=Math.max(2,step*.56);
+ cs.forEach((x,i)=>{const xx=i*step+step/2,yo=pad+(hi-x.o)*scale,yc=pad+(hi-x.c)*scale,yh=pad+(hi-x.h)*scale,yl=pad+(hi-x.l)*scale,up=x.c>=x.o;c.strokeStyle=up?'#28d79a':'#ff647c';c.fillStyle=c.strokeStyle;c.beginPath();c.moveTo(xx,yh);c.lineTo(xx,yl);c.stroke();c.fillRect(xx-bw/2,Math.min(yo,yc),bw,Math.max(1,Math.abs(yc-yo)))});
+}
+function render(){
+ const floating=sim.positions.reduce((s,p)=>s+(candles.at(-1).c-p.entry)*p.units*(p.side==='BUY'?1:-1),0);
+ msg('balance',money(sim.balance));msg('equity',money(sim.balance+floating));msg('floating','Floating '+money(floating));msg('daily',money(sim.realized));msg('tradecount',sim.tradesToday+' / '+sim.maxTrades+' transaksi');msg('positionCount',sim.positions.length+' posisi');
+ const pos=$('positions');if(pos)pos.innerHTML=sim.positions.length?sim.positions.map((p,i)=>{const pl=(candles.at(-1).c-p.entry)*p.units*(p.side==='BUY'?1:-1);return '<tr><td>'+p.side+'</td><td>'+p.entry.toFixed(2)+'</td><td>'+p.sl.toFixed(2)+'</td><td>'+p.tp.toFixed(2)+'</td><td>'+p.units.toFixed(3)+' unit sim</td><td class="'+(pl>=0?'positive':'negative')+'">'+money(pl)+'</td><td><button data-close="'+i+'">Close</button></td></tr>'}).join(''):'<tr><td colspan="7" class="empty">Belum ada posisi simulasi</td></tr>';
+ const hist=$('history');if(hist)hist.innerHTML=sim.history.length?sim.history.slice(0,30).map(h=>'<tr><td>'+h.time+'</td><td>'+h.side+'</td><td>'+h.entry.toFixed(2)+'</td><td>'+h.exit.toFixed(2)+'</td><td class="'+(h.pnl>=0?'positive':'negative')+'">'+money(h.pnl)+'</td><td>'+h.reason+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Belum ada riwayat</td></tr>';
+ draw();
+}
+function markPositions(){
+ if(!candles.length)return;const c=candles.at(-1);
+ for(let i=sim.positions.length-1;i>=0;i--){const p=sim.positions[i];if(p.side==='BUY'&&c.l<=p.sl)closePos(i,p.sl,'Stop loss');else if(p.side==='BUY'&&c.h>=p.tp)closePos(i,p.tp,'Take profit');else if(p.side==='SELL'&&c.h>=p.sl)closePos(i,p.sl,'Stop loss');else if(p.side==='SELL'&&c.l<=p.tp)closePos(i,p.tp,'Take profit')}
+}
+function openSim(side){
+ if(!feedOK||!analysis||analysis.signal!==side){alert('Entry simulasi ditolak: feed valid dan sinyal searah belum tersedia.');return}
+ if(sim.positions.length||sim.tradesToday>=sim.maxTrades||sim.realized<=-sim.capital*sim.dailyLimit/100){alert('Risk manager mengunci entry.');return}
+ const dist=Math.abs(analysis.entry-analysis.sl),riskCash=sim.capital*sim.risk/100,units=riskCash/dist;
+ if(!Number.isFinite(units)||units<=0){alert('Kalkulasi simulasi tidak valid.');return}
+ sim.positions.push({side,entry:analysis.entry,sl:analysis.sl,tp:analysis.tp,units});sim.tradesToday++;saveSettings();render();
+}
+function closePos(i,price,reason){const p=sim.positions[i];if(!p)return;const pnl=(price-p.entry)*p.units*(p.side==='BUY'?1:-1);sim.balance+=pnl;sim.realized+=pnl;sim.history.unshift({time:new Date().toLocaleString(),side:p.side,entry:p.entry,exit:price,pnl,reason});sim.positions.splice(i,1);saveSettings();render()}
+function clearFeed(error){
+ feedOK=false;candles=[];analysis=null;setSignal('WAIT','wait');msg('livePrice','--');msg('livePriceMeta',error||'Feed belum tersedia');msg('livePriceStatus','FEED ERROR');msg('priceLabel','NO VERIFIED DATA');msg('lastPrice','--');msg('candleTime','--');msg('reason','Analisis dihentikan. Tidak ada candle simulasi pengganti.');draw();
+}
+async function loadMarketCandles(){
+ msg('livePriceStatus','MENGAMBIL DATA…');
  try{
-  if(!externalData||!externalFeedFresh)throw new Error('Feed OHLC Twelve Data belum aktif atau sedang stale. Tunggu feed berhasil diperbarui.');
-  const {data,error}=await sbClient.functions.invoke('ai-analysis',{body:{symbol:'XAUUSD',timeframe:state.tf}});
-  if(error)throw error;
-  if(!data?.ok)throw new Error(data?.error||'Analisis AI gagal.');
+  const url=URL+'/functions/v1/market-data?timeframe='+encodeURIComponent(tf)+'&limit=350';
+  const r=await fetch(url,{headers:{apikey:PUBLIC_KEY,Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(18000)});
+  const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Feed provider gagal');
+  if(!Array.isArray(d.candles))throw Error('Format OHLC tidak valid');
+  let arr=d.candles.map(c=>({o:Number(c.o),h:Number(c.h),l:Number(c.l),c:Number(c.c),time:String(c.time||'')})).filter(c=>c.time&&[c.o,c.h,c.l,c.c].every(Number.isFinite)&&c.h>=Math.max(c.o,c.c,c.l)&&c.l<=Math.min(c.o,c.c,c.h));
+  const ms=TF_MS[tf],last=arr.at(-1),stamp=last?Date.parse(last.time.replace(' ','T')+'Z'):NaN;
+  if(Number.isFinite(stamp)&&Date.now()-stamp<ms)arr=arr.slice(0,-1);
+  if(arr.length<210)throw Error('Candle selesai kurang dari 210; tersedia '+arr.length+'. Periksa kuota Twelve Data/timeframe.');
+  const t=Date.parse(arr.at(-1).time.replace(' ','T')+'Z');
+  if(!Number.isFinite(t)||Date.now()-t>Math.max(ms*4,6*60*60*1000))throw Error('Candle terakhir stale/kedaluwarsa. Analisis dikunci.');
+  candles=arr;tf=String(d.timeframe||tf).toUpperCase();feedOK=true;feedAt=Date.now();
+  const latest=candles.at(-1);msg('livePrice',Number(d.latest_price).toFixed(2));msg('livePriceMeta','Twelve Data '+tf+' • data agregat, bukan quote HFM');msg('livePriceStatus','DATA MASUK');msg('priceLabel','TWELVE DATA • '+tf);msg('candleTime','Candle selesai UTC '+latest.time);msg('nextCandle','Refresh data');
+  analyze();markPositions();render();
+ }catch(e){clearFeed(e.message||'Gagal mengambil OHLC');}
+}
+async function authRefresh(){
+ if(!sb)return;const {data,error}=await sb.auth.getSession();session=data?.session||null;
+ $('authSignedOut')?.classList.toggle('hidden',!!session);$('authSignedIn')?.classList.toggle('hidden',!session);
+ msg('authStatus',session?'LOGIN AKTIF':'BELUM LOGIN');msg('authUser',session?.user?.email||'');
+ if($('cloudAnalyze'))$('cloudAnalyze').disabled=!session;
+ msg('cloudAiStatus',session?'SIAP':'MENUNGGU LOGIN');
+ if(session)loadJournal();else msg('journalStatus','LOGIN DIPERLUKAN');
+ if(error)msg('authMessage',error.message);
+}
+async function loadJournal(){
+ if(!session){msg('journalStatus','LOGIN DIPERLUKAN');return}
+ msg('journalStatus','MEMUAT…');
+ const {data,error}=await sb.from('demo_trades').select('id,direction,timeframe,entry_price,stop_loss,take_profit,lot_size,status,opened_at').order('opened_at',{ascending:false}).limit(100);
+ if(error){msg('journalStatus','ERROR: '+error.message);return}
+ msg('journalStatus',(data||[]).length+' CATATAN');
+ $('journalRows').innerHTML=(data||[]).map(t=>'<tr><td>'+new Date(t.opened_at).toLocaleString()+'</td><td>'+t.direction+'</td><td>'+Number(t.entry_price).toFixed(2)+'</td><td>'+(t.stop_loss??'--')+' / '+(t.take_profit??'--')+'</td><td>'+Number(t.lot_size).toFixed(2)+'</td><td>'+t.status+'</td><td>'+(t.status==='OPEN'?'<button data-close="'+t.id+'">Tutup</button> ':'')+'<button data-delete="'+t.id+'">Hapus</button></td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada transaksi</td></tr>';
+}
+async function cloudAnalysis(){
+ if(!session){msg('cloudAiOutput','Login diperlukan.');return}
+ if(!feedOK){msg('cloudAiOutput','Analisis dihentikan: feed candle belum valid.');return}
+ const b=$('cloudAnalyze');b.disabled=true;msg('cloudAiStatus','MENGANALISIS…');msg('cloudAiOutput','Mengambil data server dan menjalankan analisis…');
+ try{
+  const {data,error}=await sb.functions.invoke('ai-analysis',{body:{symbol:'XAUUSD',timeframe:tf}});
+  if(error)throw error;if(!data?.ok)throw Error(data?.error||'Analisis AI gagal');
   const z=data.analysis||{},list=v=>Array.isArray(v)?v.join(' • '):String(v||'Belum tersedia');
   const headlines=(data.news||[]).slice(0,8).map(n=>'• '+n.title+' ('+n.domain+')').join('\n');
-  const macro=data.macro?.series||{};
-  const macroText=Object.entries(macro).map(([k,v])=>k+': '+(v.status==='available'?(v.observations||[]).map(o=>o.date+' '+o.value).join(', '):'tidak tersedia')).join('\n');
-  $('cloudAiOutput').textContent=
-   'SINYAL: '+(z.signal||'WAIT')+' | CONFIDENCE: '+(z.confidence??'--')+'% | KUALITAS SETUP: '+(z.setup_quality??'--')+'/100\n\n'+
-   'RINGKASAN\n'+(z.summary||'Tidak ada ringkasan')+'\n\nTEKNIKAL\n'+(z.technical||'Belum tersedia')+
-   '\n\nFUNDAMENTAL\n'+(z.fundamental||'Belum tersedia')+'\n\nDAMPAK NEWS\n'+(z.news_impact||'Belum tersedia')+
-   '\n\nKONFLUENSI\n'+list(z.confluence)+'\n\nRISIKO\n'+list(z.risks)+
-   '\n\nDATA KURANG\n'+list(z.missing_data)+'\n\nINVALIDASI\n'+(z.invalidation||'--')+
-   '\n\nSUMBER DATA: News '+(data.feeds?.news||'unknown')+' | FRED '+(data.feeds?.macro||'unknown')+
-   '\nAsal candle: '+(data.data_quality?.provider||'unknown')+' • '+(data.data_quality?.ohlc_origin||'unknown')+' ('+(data.data_quality?.candle_count??0)+' candle)'+
-   '\n\nHEADLINE TERKINI\n'+(headlines||'Tidak ada headline yang berhasil diambil')+
-   '\n\nDATA MAKRO FRED\n'+macroText+
-   '\n\nPENTING: confidence AI bukan probabilitas menang. Data Twelve Data adalah harga agregat eksternal, bukan bid/ask atau harga eksekusi HFM. Tidak ada order otomatis.';
-  $('cloudAiStatus').textContent='SELESAI • '+new Date().toLocaleTimeString();
- }catch(e){$('cloudAiOutput').textContent='Gagal: '+(e.message||'Tidak dapat menghubungi AI cloud')+'. Periksa sesi login, OPENAI_API_KEY, dan kuota OpenAI.';$('cloudAiStatus').textContent='ERROR'}
- finally{$('cloudAnalyze').disabled=!(await sbClient.auth.getSession()).data.session}
-};
-
-async function loadJournal(){
- const {data:{session}}=await sbClient.auth.getSession();
- if(!session){$('journalStatus').textContent='LOGIN DIPERLUKAN';return}
- $('journalStatus').textContent='MEMUAT';
- const {data,error}=await sbClient.from('demo_trades').select('id,direction,timeframe,entry_price,stop_loss,take_profit,lot_size,status,opened_at').order('opened_at',{ascending:false}).limit(100);
- if(error){$('journalStatus').textContent='ERROR: '+error.message;return}
- $('journalStatus').textContent=(data||[]).length+' CATATAN';
- $('journalRows').innerHTML=(data||[]).map(t=>'<tr><td>'+new Date(t.opened_at).toLocaleString()+'</td><td>'+t.direction+'</td><td>'+Number(t.entry_price).toFixed(2)+'</td><td>'+(t.stop_loss??'--')+' / '+(t.take_profit??'--')+'</td><td>'+Number(t.lot_size).toFixed(2)+'</td><td>'+t.status+'</td><td>'+(t.status==='OPEN'?'<button data-close="'+t.id+'">Tutup</button> ':'')+'<button data-delete="'+t.id+'">Hapus</button></td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada transaksi demo</td></tr>';
+  const macro=data.macro?.series||{},macroText=Object.entries(macro).map(([k,v])=>k+': '+(v.status==='available'?(v.observations||[]).map(o=>o.date+' '+o.value).join(', '):'tidak tersedia')).join('\n');
+  $('cloudAiOutput').textContent='SINYAL: '+(z.signal||'WAIT')+' | CONFIDENCE: '+(z.confidence??'--')+'% | SETUP: '+(z.setup_quality??'--')+'/100\n\nRINGKASAN\n'+(z.summary||'--')+'\n\nTEKNIKAL\n'+(z.technical||'--')+'\n\nFUNDAMENTAL\n'+(z.fundamental||'--')+'\n\nDAMPAK NEWS\n'+(z.news_impact||'--')+'\n\nKONFLUENSI\n'+list(z.confluence)+'\n\nRISIKO\n'+list(z.risks)+'\n\nDATA KURANG\n'+list(z.missing_data)+'\n\nINVALIDASI\n'+(z.invalidation||'--')+'\n\nSUMBER: '+(data.feeds?.news||'--')+' | FRED '+(data.feeds?.macro||'--')+'\nOHLC: '+(data.data_quality?.provider||'--')+' • '+(data.data_quality?.last_completed_candle||'--')+'\n\nHEADLINE\n'+(headlines||'Tidak tersedia')+'\n\nMAKRO\n'+macroText+'\n\nCatatan: harga agregat Twelve Data bukan bid/ask HFM. Confidence bukan probabilitas menang. Tidak ada order broker.';
+  msg('cloudAiStatus','SELESAI • '+new Date().toLocaleTimeString());
+ }catch(e){$('cloudAiOutput').textContent='GAGAL: '+(e.message||'Analisis gagal')+'. Periksa sesi login, OPENAI_API_KEY, TWELVE_DATA_API_KEY dan kuota.';msg('cloudAiStatus','ERROR')}
+ finally{b.disabled=!session}
 }
-$('jSave').onclick=async()=>{
- const {data:{session}}=await sbClient.auth.getSession();if(!session){alert('Login dulu');return}
- const entry=Number($('jEntry').value),lot=Number($('jLot').value),sl=$('jSL').value?Number($('jSL').value):null,tp=$('jTP').value?Number($('jTP').value):null;
- if(!(entry>0&&lot>0)||(sl!==null&&!(sl>0))||(tp!==null&&!(tp>0))){alert('Periksa nilai entry, lot, SL, TP');return}
- const {error}=await sbClient.from('demo_trades').insert({user_id:session.user.id,symbol:'XAUUSD',direction:$('jDirection').value,timeframe:$('jTimeframe').value,entry_price:entry,stop_loss:sl,take_profit:tp,lot_size:lot,notes:$('jNotes').value||null});
- if(error){alert(error.message);return} await loadJournal();
-};
+$('authLogin').onclick=async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||!password){msg('authMessage','Isi email dan password.');return}msg('authMessage','Sedang masuk…');const {error}=await sb.auth.signInWithPassword({email,password});msg('authMessage',error?error.message:'Login berhasil.');await authRefresh()};
+$('authRegister').onclick=async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||password.length<6){msg('authMessage','Isi email valid dan password minimal 6 karakter.');return}msg('authMessage','Membuat akun…');const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.href.split('#')[0]}});if(error){msg('authMessage',error.message);return}msg('authMessage',data.session?'Akun dibuat dan login berhasil.':'Akun dibuat. Cek email konfirmasi, lalu login.');await authRefresh()};
+$('authLogout').onclick=async()=>{const {error}=await sb.auth.signOut();msg('authMessage',error?'Gagal keluar: '+error.message:'Berhasil keluar.');await authRefresh()};
+$('cloudAnalyze').onclick=cloudAnalysis;
+$('jSave').onclick=async()=>{if(!session){alert('Login dulu.');return}const entry=Number($('jEntry').value),lot=Number($('jLot').value),sl=$('jSL').value?Number($('jSL').value):null,tp=$('jTP').value?Number($('jTP').value):null;if(!(entry>0&&lot>0)||(sl!==null&&!(sl>0))||(tp!==null&&!(tp>0))){alert('Entry dan lot wajib valid; SL/TP harus positif.');return}const {error}=await sb.from('demo_trades').insert({user_id:session.user.id,symbol:'XAUUSD',direction:$('jDirection').value,timeframe:$('jTimeframe').value,entry_price:entry,stop_loss:sl,take_profit:tp,lot_size:lot,notes:$('jNotes').value||null});if(error)alert(error.message);else loadJournal()};
 $('jRefresh').onclick=loadJournal;
-$('journalRows').onclick=async e=>{
- const id=e.target.dataset.close,del=e.target.dataset.delete;
- if(id){const exit=Number(window.prompt('Harga penutupan demo'));if(!(exit>0))return;const {error}=await sbClient.from('demo_trades').update({status:'CLOSED',exit_price:exit,closed_at:new Date().toISOString()}).eq('id',id);if(error)alert(error.message);else loadJournal()}
- if(del&&window.confirm('Hapus catatan ini?')){const {error}=await sbClient.from('demo_trades').delete().eq('id',del);if(error)alert(error.message);else loadJournal()}
-};
-
-updateAuthUI();
-loadJournal();
-const SUPABASE_URL='https://rjnghnfmjnqhlswxocoi.supabase.co';
-const SUPABASE_PUBLIC_KEY='sb_publishable_U1Vbg1l2C0ReNBLs3NKJRQ_-84SAbk-';
-async function loadMarketCandles(){
- const value=$('livePrice'),meta=$('livePriceMeta'),badge=$('livePriceStatus');
- try{
-  badge.textContent='MENGAMBIL OHLC…';
-  const url=SUPABASE_URL+'/functions/v1/market-data?timeframe='+encodeURIComponent(state.tf)+'&limit=300';
-  const response=await fetch(url,{headers:{'apikey':SUPABASE_PUBLIC_KEY,'Accept':'application/json'},cache:'no-store',signal:AbortSignal.timeout(18000)});
-  const data=await response.json();
-  if(!response.ok||!data.ok)throw new Error(data.error||'Feed candle belum tersedia');
-  if(!Array.isArray(data.candles)||data.candles.length<200)throw new Error('Candle minimal 200 untuk indikator EMA200; tersedia '+(data.candles||[]).length);
-  state.candles=data.candles.map(c=>({o:Number(c.o),h:Number(c.h),l:Number(c.l),c:Number(c.c),time:c.time})).filter(c=>[c.o,c.h,c.l,c.c].every(Number.isFinite));
-  if(state.candles.length<200)throw new Error('Data OHLC valid kurang dari 200 candle.');
-  externalData=true;externalFeedFresh=true;
-  const last=state.candles[state.candles.length-1];
-  value.textContent='
-load();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});setInterval(()=>{if(state.auto&&!state.paused)next()},5000);$('capital').value=state.capital;$('risk').value=state.risk;$('dailyLimit').value=state.dailyLimit;$('maxTrades').value=state.maxTrades;if(!state.candles.length)seed();analyze();render();save();
-})();
-</script></body></html>+Number(data.latest_price).toFixed(2);
-  meta.textContent='Twelve Data • '+data.timeframe+' • '+data.count+' candle • bukan harga eksekusi HFM';
-  badge.textContent='EXTERNAL OHLC';
-  $('priceLabel').textContent='TWELVE DATA • '+state.tf+' • BUKAN HFM';
-  $('lastPrice').textContent=last.c.toFixed(2);
-  $('candleTime').textContent='UTC '+last.time;
-  $('nextCandle').textContent='Refresh candle';
-  analyze();render();save();
- }catch(error){
-  externalFeedFresh=false;
-  value.textContent='--';meta.textContent=error.message+' • Data lama tidak boleh dipakai untuk analisis cloud';
-  badge.textContent='FEED ERROR';$('priceLabel').textContent='SIMULATED FALLBACK';
- }
-}
-$('nextCandle').textContent='Refresh candle';
-loadMarketCandles();setInterval(loadMarketCandles,900000);
-load();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});setInterval(()=>{if(state.auto&&!state.paused)next()},5000);$('capital').value=state.capital;$('risk').value=state.risk;$('dailyLimit').value=state.dailyLimit;$('maxTrades').value=state.maxTrades;if(!state.candles.length)seed();analyze();render();save();
+$('journalRows').onclick=async e=>{const id=e.target.dataset.close,del=e.target.dataset.delete;if(id){const exit=Number(prompt('Harga penutupan demo'));if(!(exit>0))return;const {error}=await sb.from('demo_trades').update({status:'CLOSED',exit_price:exit,closed_at:new Date().toISOString()}).eq('id',id);if(error)alert(error.message);else loadJournal()}if(del&&confirm('Hapus catatan ini?')){const {error}=await sb.from('demo_trades').delete().eq('id',del);if(error)alert(error.message);else loadJournal()}};
+$('buy').onclick=()=>openSim('BUY');$('sell').onclick=()=>openSim('SELL');
+$('closeAll').onclick=()=>{for(let i=sim.positions.length-1;i>=0;i--)closePos(i,candles.at(-1).c,'Manual close')};
+$('kill').onclick=()=>{for(let i=sim.positions.length-1;i>=0;i--)closePos(i,candles.at(-1).c,'Kill switch');msg('autoStatus','PAUSED');msg('engineState','ANALISIS SAJA')};
+$('toggleAuto').onclick=()=>alert('Autopilot otomatis dinonaktifkan. Dashboard ini belum memiliki MT5 bridge/EA, sehingga tidak boleh membuat posisi otomatis seolah-olah order broker.');
+$('nextCandle').onclick=loadMarketCandles;
+$('timeframes').onclick=e=>{const v=e.target.dataset.tf;if(!v||!TF_MS[v])return;tf=v;document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));clearFeed('Mengganti timeframe ke '+tf+'; mengambil ulang candle…');loadMarketCandles()};
+$('positions').onclick=e=>{const i=e.target.dataset.close;if(i!==undefined)closePos(Number(i),candles.at(-1).c,'Manual close')};
+$('saveSettings').onclick=()=>{const capital=Number($('capital').value),risk=Number($('risk').value),limit=Number($('dailyLimit').value),trades=Number($('maxTrades').value);if(![capital,risk,limit,trades].every(Number.isFinite)||capital<10||capital>1000000||risk<.1||risk>2||limit<.5||limit>5||trades<1||trades>10){alert('Modal $10–$1.000.000; risiko 0,1–2%; batas rugi 0,5–5%; maksimal 1–10 transaksi.');return}sim.capital=capital;sim.balance=capital+sim.realized;sim.risk=risk;sim.dailyLimit=limit;sim.maxTrades=Math.floor(trades);msg('riskStatus','Tersimpan. Nilai unit hanya untuk simulasi, bukan ukuran lot HFM.');saveSettings();render()};
+$('reset').onclick=()=>{if(!confirm('Reset akun simulasi lokal dan riwayat?'))return;sim={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,tradesToday:0,day:today(),realized:0,positions:[],history:[]};['capital','risk','dailyLimit','maxTrades'].forEach((id,i)=>$(id).value=[100,.5,2,3][i]);saveSettings();render()};
+loadSettings();$('capital').value=sim.capital;$('risk').value=sim.risk;$('dailyLimit').value=sim.dailyLimit;$('maxTrades').value=sim.maxTrades;
+try{sb=window.supabase.createClient(URL,PUBLIC_KEY);sb.auth.onAuthStateChange(()=>setTimeout(authRefresh,0));authRefresh()}catch(e){msg('authMessage','Supabase gagal diinisialisasi: '+e.message)}
+window.addEventListener('resize',draw);
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+clearFeed('Belum mengambil data pasar.');loadMarketCandles();setInterval(loadMarketCandles,Math.max(60000,TF_MS[tf]));
+render();
 })();
 </script></body></html>
