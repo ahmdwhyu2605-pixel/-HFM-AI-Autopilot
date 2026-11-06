@@ -1,1 +1,41 @@
-# HFM AI Autopilot\n\nMobile-first XAUUSD analysis and **local simulation** dashboard.\n\n## Deploy on GitHub Pages\n1. Open repository Settings → Pages.\n2. Under Build and deployment, choose Deploy from a branch.\n3. Select branch `main`, folder `/ (root)`, then Save.\n4. Wait for GitHub Pages to publish.\n\n## Important limits\n- Candle feed is synthetic demo data, not HFM quotes.\n- Indicator engine is deterministic rule-based analysis, not a connected cloud AI model.\n- BUY/SELL and autopilot execute only virtual positions in the browser.\n- No MT5/HFM order is sent. Live automation requires a secure authenticated backend and an MT5 terminal/EA running on Windows or VPS.\n- Never put broker passwords, investor passwords, API secrets, or MT5 credentials in this public repository or browser code.\n\n## Included\n- EMA, RSI, ADX, ATR analysis; BUY/SELL/WAIT filters\n- Demo position management, simulated SL/TP, P/L, history\n- Risk controls, daily loss cap, max positions/trades, kill switch\n- Browser persistence and installable PWA shell\n
+# HFM AI Autopilot
+
+Mobile-first XAUUSD analysis, historical backtest, and manual demo journal.
+
+## GitHub Pages deployment
+1. Open repository **Settings → Pages**.
+2. Choose **Deploy from a branch**.
+3. Select branch `main`, folder `/(root)`, then Save.
+4. Wait for GitHub Pages to publish.
+
+## Backend (Supabase)
+Project: `rjnghnfmjnqhlswxocoi` (Tokyo)
+
+Edge Functions are version-controlled in `supabase/functions/`:
+- `market-data`: retrieves XAU/USD OHLC from Twelve Data, removes the forming candle, and rejects stale or insufficient history.
+- `ai-analysis`: authenticated AI research using completed Twelve Data candles, OpenAI, GDELT headlines, and FRED macro series.
+
+Required Supabase Edge Function secrets:
+- `TWELVE_DATA_API_KEY`
+- `OPENAI_API_KEY`
+
+Never place these secrets in GitHub, browser JavaScript, or chat. The frontend contains only the Supabase publishable key.
+
+## Current capabilities
+- Supabase email signup/login.
+- XAU/USD aggregate market candles and EMA20/50/200, RSI, ADX, ATR analysis.
+- AI cloud research (requires login and both backend secrets).
+- Manual demo journal stored per authenticated user.
+- Historical strategy backtest on the loaded, verified candles; results can be saved to the user's account.
+- Local-only demo simulator with risk settings, position history, SL/TP, and kill switch.
+- Installable PWA shell and Android-responsive layout.
+
+## Important limits
+- Twelve Data XAU/USD is an external aggregate feed, **not HFM bid/ask or execution prices**.
+- Backtests omit spread, commission, swap, slippage, and broker-specific contract rules; results are research only.
+- Local simulation does not open orders at HFM and its displayed units are not broker lots.
+- **Live MT5 autopilot is not connected yet.** It requires a secure MT5 Expert Advisor/bridge running in MT5 Desktop on Windows or a Windows VPS. MT5 Android cannot run Expert Advisors. Do not use this dashboard for live execution.
+- The `market-data` endpoint is public to support the unauthenticated chart feed; protect the Twelve Data quota and review usage.
+
+## Deploy backend changes
+Deploy the matching function from `supabase/functions/<function-name>/index.ts` to the Supabase project. Keep `verify_jwt` settings in `supabase/config.toml` aligned with the live function configuration.
