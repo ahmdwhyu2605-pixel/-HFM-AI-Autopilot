@@ -13,7 +13,17 @@
 <body><div class="wrap">
 <header class="top"><div><div class="brand">HFM <span>AI AUTOPILOT</span></div><div class="sub">XAUUSD • Risk-first trading terminal</div></div><div class="pill"><i class="dot"></i> MODE SIMULASI • DEMO</div></header>
 <div class="notice" style="margin-bottom:12px"><b>MODE AMAN:</b> Grafik dan order tetap simulasi. Harga referensi XAU spot ditampilkan terpisah; bukan kuotasi bid/ask HFM.</div><div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><div class="label">Harga referensi XAUUSD (spot)</div><div class="value" id="livePrice">Menghubungkan…</div><div class="small" id="livePriceMeta">Backend Supabase • menunggu feed</div></div><span class="status" id="livePriceStatus">CONNECTING</span></div>
-<section class="grid">
+<div class="card full" style="margin-bottom:12px">
+<h2>AKUN & AI CLOUD <span class="status" id="authStatus">BELUM LOGIN</span></h2>
+<div id="authSignedOut"><div class="two"><div class="field"><label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="email@contoh.com"></div><div class="field"><label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="Minimal 6 karakter"></div></div><div class="toolbar"><button id="authLogin" class="btnmain">Masuk</button><button id="authRegister">Daftar akun</button></div></div>
+<div id="authSignedIn" class="hidden"><div class="row"><span class="small" id="authUser"></span><button id="authLogout">Keluar</button></div></div>
+<div class="small" id="authMessage" style="margin-top:8px">Login diperlukan untuk memakai AI cloud.</div>
+</div>
+<div class="card full" style="margin-bottom:12px">
+<h2>ANALISIS AI CLOUD <span class="status" id="cloudAiStatus">MENUNGGU LOGIN</span></h2>
+<button id="cloudAnalyze" class="btnmain" style="width:100%" disabled>Minta analisis AI cloud</button>
+<div id="cloudAiOutput" class="reason" style="margin-top:10px">AI cloud akan menganalisis indikator yang tersedia. Sinyal hanya opini analitis, bukan perintah transaksi.</div>
+</div><section class="grid">
 <div class="card stat"><div class="label">Balance demo</div><div class="value" id="balance">$100.00</div><div class="small">Modal simulasi</div></div>
 <div class="card stat"><div class="label">Equity</div><div class="value" id="equity">$100.00</div><div class="small" id="floating">Floating $0.00</div></div>
 <div class="card stat"><div class="label">P/L hari ini</div><div class="value" id="daily">$0.00</div><div class="small" id="tradecount">0 / 3 transaksi</div></div>
@@ -27,6 +37,7 @@
 <div class="card half"><h2>KONEKSI MT5 / HFM</h2><div class="row"><span class="small">MT5 bridge</span><b class="negative">DISCONNECTED</b></div><div class="row"><span class="small">Harga broker live</span><b class="negative">TIDAK TERHUBUNG</b></div><div class="row"><span class="small">Eksekusi order live</span><b class="negative">TERKUNCI</b></div><div class="notice">Untuk autopilot sungguhan diperlukan MT5 desktop di Windows/VPS, EA bridge, backend HTTPS, autentikasi, dan uji demo. Jangan masukkan password HFM di halaman ini.</div></div>
 <div class="card half"><h2>STATUS SISTEM</h2><div class="row"><span class="small">Data chart</span><b class="positive">Simulasi lokal</b></div><div class="row"><span class="small">Analisis indikator</span><b class="positive">Berfungsi</b></div><div class="row"><span class="small">Risk manager</span><b class="positive">Berfungsi</b></div><div class="row"><span class="small">Order broker</span><b class="negative">Belum terhubung</b></div><button id="reset" style="width:100%;margin-top:10px">Reset akun simulasi</button></div>
 </section><div class="footer">HFM AI AUTOPILOT • Simulasi edukasi • Tidak menjamin hasil trading</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (()=>{
 const $=id=>document.getElementById(id), key='hfm_autopilot_sim_v1';
@@ -70,6 +81,37 @@ function markPositions(){for(let i=state.positions.length-1;i>=0;i--){let p=stat
 function render(){let float=state.positions.reduce((s,p)=>s+(state.candles.at(-1).c-p.entry)*p.size*(p.side==='BUY'?1:-1),0);$('balance').textContent=money(state.balance);$('equity').textContent=money(state.balance+float);$('floating').textContent='Floating '+money(float);$('daily').textContent=money(state.realized);$('daily').className='value '+(state.realized>=0?'positive':'negative');$('tradecount').textContent=state.tradesToday+' / '+state.maxTrades+' transaksi';$('positionCount').textContent=state.positions.length+' posisi';$('autoStatus').textContent=state.auto&&!state.paused?'RUNNING':'PAUSED';$('autoStatus').className=state.auto&&!state.paused?'positive':'negative';$('engineState').textContent=state.auto&&!state.paused?'AUTOPILOT':'AKTIF';$('positions').innerHTML=state.positions.length?state.positions.map((p,i)=>{let pl=(state.candles.at(-1).c-p.entry)*p.size*(p.side==='BUY'?1:-1);return '<tr><td>'+p.side+'</td><td>'+p.entry.toFixed(2)+'</td><td>'+p.sl.toFixed(2)+'</td><td>'+p.tp.toFixed(2)+'</td><td>'+p.size.toFixed(3)+' sim</td><td class="'+(pl>=0?'positive':'negative')+'">'+money(pl)+'</td><td><button data-close="'+i+'">Close</button></td></tr>'}).join(''):'<tr><td colspan="7" class="empty">Belum ada posisi</td></tr>';$('history').innerHTML=state.history.length?state.history.slice(0,30).map(h=>'<tr><td>'+h.time+'</td><td>'+h.side+'</td><td>'+h.entry.toFixed(2)+'</td><td>'+h.exit.toFixed(2)+'</td><td class="'+(h.pnl>=0?'positive':'negative')+'">'+money(h.pnl)+'</td><td>'+h.reason+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Belum ada riwayat</td></tr>';draw()}
 function draw(){let cv=$('chart'),rect=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;cv.width=rect.width*dpr;cv.height=rect.height*dpr;let c=cv.getContext('2d');c.scale(dpr,dpr);let w=rect.width,h=rect.height,cs=state.candles.slice(-55),min=Math.min(...cs.map(x=>x.l)),max=Math.max(...cs.map(x=>x.h)),pad=14,scale=(h-2*pad)/(max-min||1);c.clearRect(0,0,w,h);c.strokeStyle='#1e2b41';c.lineWidth=1;for(let i=0;i<5;i++){let y=pad+i*(h-2*pad)/4;c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke()}let step=w/cs.length,bw=Math.max(3,step*.58);cs.forEach((x,i)=>{let xx=i*step+step/2,yo=pad+(max-x.o)*scale,yc=pad+(max-x.c)*scale,yh=pad+(max-x.h)*scale,yl=pad+(max-x.l)*scale;let up=x.c>=x.o;c.strokeStyle=up?'#28d79a':'#ff647c';c.fillStyle=c.strokeStyle;c.beginPath();c.moveTo(xx,yh);c.lineTo(xx,yl);c.stroke();c.fillRect(xx-bw/2,Math.min(yo,yc),bw,Math.max(1,Math.abs(yc-yo)))})}
 $('buy').onclick=()=>open('BUY');$('sell').onclick=()=>open('SELL');$('closeAll').onclick=()=>{for(let i=state.positions.length-1;i>=0;i--)closePos(i,state.candles.at(-1).c,'Manual close')};$('kill').onclick=()=>{state.auto=false;state.paused=true;for(let i=state.positions.length-1;i>=0;i--)closePos(i,state.candles.at(-1).c,'Kill switch');render();save()};$('toggleAuto').onclick=()=>{if(!state.auto||state.paused){if(!confirm('Aktifkan autopilot SIMULASI? Tidak ada order ke HFM.'))return;state.auto=true;state.paused=false}else{state.paused=true}render();save()};$('nextCandle').onclick=next;$('timeframes').onclick=e=>{let tf=e.target.dataset.tf;if(!tf)return;state.tf=tf;document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));analyze()};$('positions').onclick=e=>{let i=e.target.dataset.close;if(i!==undefined)closePos(+i,state.candles.at(-1).c,'Manual close')};$('saveSettings').onclick=()=>{let capital=+$('capital').value,risk=+$('risk').value,limit=+$('dailyLimit').value,trades=+$('maxTrades').value;if(!Number.isFinite(capital)||!Number.isFinite(risk)||!Number.isFinite(limit)||!Number.isFinite(trades)||capital<10||capital>1000000||risk<.1||risk>2||limit<.5||limit>5||trades<1||trades>10){alert('Pengaturan tidak valid. Modal $10–$1.000.000, risiko 0,1–2%, batas rugi 0,5–5%, maksimal 1–10 transaksi.');return}state.capital=capital;state.balance=capital+state.realized;state.risk=risk;state.dailyLimit=limit;state.maxTrades=Math.min(10,Math.floor(trades));$('riskStatus').textContent='Tersimpan. Risiko per trade '+risk+'% (~'+money(capital*risk/100)+'). Lot broker nyata tidak dihitung dari simulasi ini.';render();save()};$('reset').onclick=()=>{if(!confirm('Hapus seluruh riwayat dan reset semua pengaturan simulasi ke nilai awal $100?'))return;state={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,day:new Date().toLocaleDateString(),tradesToday:0,realized:0,positions:[],history:[],auto:false,paused:true,tf:'M1',candles:[]};seed();$('capital').value=100;$('risk').value=.5;$('dailyLimit').value=2;$('maxTrades').value=3;analyze();render();save()};window.addEventListener('resize',draw);
+const sbClient=window.supabase.createClient('https://rjnghnfmjnqhlswxocoi.supabase.co','sb_publishable_U1Vbg1l2C0ReNBLs3NKJRQ_-84SAbk-');
+const authMsg=(m)=>$('authMessage').textContent=m;
+async function updateAuthUI(){
+ const {data:{session}}=await sbClient.auth.getSession();
+ $('authSignedOut').classList.toggle('hidden',!!session);
+ $('authSignedIn').classList.toggle('hidden',!session);
+ $('authStatus').textContent=session?'LOGIN AKTIF':'BELUM LOGIN';
+ $('authUser').textContent=session?.user?.email||'';
+ $('cloudAnalyze').disabled=!session;
+ $('cloudAiStatus').textContent=session?'SIAP':'MENUNGGU LOGIN';
+}
+$('authLogin').onclick=async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||!password){authMsg('Isi email dan password.');return}authMsg('Sedang masuk…');const {error}=await sbClient.auth.signInWithPassword({email,password});authMsg(error?error.message:'Login berhasil.');await updateAuthUI()};
+$('authRegister').onclick=async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||password.length<6){authMsg('Isi email valid dan password minimal 6 karakter.');return}authMsg('Membuat akun…');const {data,error}=await sbClient.auth.signUp({email,password,options:{emailRedirectTo:location.href.split('#')[0]}});if(error){authMsg(error.message);return}authMsg(data.session?'Akun dibuat dan login berhasil.':'Akun dibuat. Cek email untuk konfirmasi, lalu login.');await updateAuthUI()};
+$('authLogout').onclick=async()=>{const {error}=await sbClient.auth.signOut();authMsg(error?'Gagal keluar: '+error.message:'Berhasil keluar.');await updateAuthUI()};
+sbClient.auth.onAuthStateChange(()=>{setTimeout(updateAuthUI,0)});
+$('cloudAnalyze').onclick=async()=>{
+ const sessionResult=await sbClient.auth.getSession(),session=sessionResult.data.session;
+ if(!session){authMsg('Login dulu untuk menggunakan AI cloud.');await updateAuthUI();return}
+ const a=analysis;if(!a){$('cloudAiOutput').textContent='Indikator belum siap.';return}
+ $('cloudAnalyze').disabled=true;$('cloudAiStatus').textContent='MENGANALISIS…';$('cloudAiOutput').textContent='Mengirim indikator ke AI cloud…';
+ try{
+  const {data,error}=await sbClient.functions.invoke('ai-analysis',{body:{symbol:'XAUUSD',timeframe:state.tf,price:a.price,indicators:{ema20:a.e20,ema50:a.e50,rsi14:a.rsi,adx14:a.adx,atr14:a.atr,ruleSignal:a.signal,ruleReason:a.why}}});
+  if(error)throw error;
+  if(!data?.ok)throw new Error(data?.error||'Analisis AI gagal.');
+  const z=data.analysis;
+  $('cloudAiOutput').textContent='Sinyal AI: '+z.signal+' • Keyakinan: '+z.confidence+'% • '+z.summary+' • Risiko: '+(Array.isArray(z.risks)?z.risks.join('; '):'Tidak dirinci')+' • Model: '+data.model;
+  $('cloudAiStatus').textContent='SELESAI';
+ }catch(e){$('cloudAiOutput').textContent='Gagal: '+(e.message||'Tidak dapat menghubungi AI cloud')+'. Periksa konfirmasi email, API key, dan kuota OpenAI.';$('cloudAiStatus').textContent='ERROR'}
+ finally{$('cloudAnalyze').disabled=!(await sbClient.auth.getSession()).data.session}
+};
+updateAuthUI();
 const SUPABASE_URL='https://rjnghnfmjnqhlswxocoi.supabase.co';
 const SUPABASE_PUBLIC_KEY='sb_publishable_U1Vbg1l2C0ReNBLs3NKJRQ_-84SAbk-';
 async function refreshLiveQuote(){
