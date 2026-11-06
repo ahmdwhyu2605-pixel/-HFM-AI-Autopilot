@@ -74,7 +74,7 @@ let sim={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,tradesToday:0,
 function msg(id,s){const e=$(id);if(e)e.textContent=s}
 function money(n){return (n<0?'-$':'$')+Math.abs(Number(n)||0).toFixed(2)}
 function today(){return new Date().toISOString().slice(0,10)}
-function loadSettings(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');if(x)sim={...sim,...x,positions:[],history:x.history||[]}}catch(e){} if(sim.day!==today()){sim.day=today();sim.tradesToday=0;sim.realized=0} }
+function loadSettings(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');if(x)sim={...sim,...x,positions:Array.isArray(x.positions)?x.positions.filter(p=>p&&['BUY','SELL'].includes(p.side)&&[p.entry,p.sl,p.tp,p.units].every(v=>Number.isFinite(Number(v))&&Number(v)>0)).map(p=>({...p,entry:Number(p.entry),sl:Number(p.sl),tp:Number(p.tp),units:Number(p.units)})):[],history:Array.isArray(x.history)?x.history:[]}}catch(e){} if(sim.day!==today()){sim.day=today();sim.tradesToday=0;sim.realized=0} }
 function saveSettings(){try{localStorage.setItem(KEY,JSON.stringify(sim))}catch(e){msg('riskStatus','Tidak dapat menyimpan pengaturan di perangkat.')} }
 function timeframe(){return tf}
 function ema(a,p){if(a.length<p)return NaN;let k=2/(p+1),v=a[0];for(let i=1;i<a.length;i++)v=a[i]*k+v*(1-k);return v}
@@ -116,9 +116,10 @@ function draw(){
  cs.forEach((x,i)=>{const xx=i*step+step/2,yo=pad+(hi-x.o)*scale,yc=pad+(hi-x.c)*scale,yh=pad+(hi-x.h)*scale,yl=pad+(hi-x.l)*scale,up=x.c>=x.o;c.strokeStyle=up?'#28d79a':'#ff647c';c.fillStyle=c.strokeStyle;c.beginPath();c.moveTo(xx,yh);c.lineTo(xx,yl);c.stroke();c.fillRect(xx-bw/2,Math.min(yo,yc),bw,Math.max(1,Math.abs(yc-yo)))});
 }
 function render(){
- const floating=sim.positions.reduce((s,p)=>s+(candles.at(-1).c-p.entry)*p.units*(p.side==='BUY'?1:-1),0);
+ const mark=feedOK&&candles.length?candles.at(-1).c:null;
+ const floating=mark===null?0:sim.positions.reduce((s,p)=>s+(mark-p.entry)*p.units*(p.side==='BUY'?1:-1),0);
  msg('balance',money(sim.balance));msg('equity',money(sim.balance+floating));msg('floating','Floating '+money(floating));msg('daily',money(sim.realized));msg('tradecount',sim.tradesToday+' / '+sim.maxTrades+' transaksi');msg('positionCount',sim.positions.length+' posisi');
- const pos=$('positions');if(pos)pos.innerHTML=sim.positions.length?sim.positions.map((p,i)=>{const pl=(candles.at(-1).c-p.entry)*p.units*(p.side==='BUY'?1:-1);return '<tr><td>'+p.side+'</td><td>'+p.entry.toFixed(2)+'</td><td>'+p.sl.toFixed(2)+'</td><td>'+p.tp.toFixed(2)+'</td><td>'+p.units.toFixed(3)+' unit sim</td><td class="'+(pl>=0?'positive':'negative')+'">'+money(pl)+'</td><td><button data-close="'+i+'">Close</button></td></tr>'}).join(''):'<tr><td colspan="7" class="empty">Belum ada posisi simulasi</td></tr>';
+ const pos=$('positions');if(pos)pos.innerHTML=sim.positions.length?sim.positions.map((p,i)=>{const pl=mark===null?null:(mark-p.entry)*p.units*(p.side==='BUY'?1:-1);return '<tr><td>'+p.side+'</td><td>'+p.entry.toFixed(2)+'</td><td>'+p.sl.toFixed(2)+'</td><td>'+p.tp.toFixed(2)+'</td><td>'+p.units.toFixed(3)+' unit sim</td><td class="'+(pl===null?'':pl>=0?'positive':'negative')+'">'+(pl===null?'NO FEED':money(pl))+'</td><td><button data-close="'+i+'" '+(mark===null?'disabled':'')+'>Close</button></td></tr>'}).join(''):'<tr><td colspan="7" class="empty">Belum ada posisi simulasi</td></tr>';
  const hist=$('history');if(hist)hist.innerHTML=sim.history.length?sim.history.slice(0,30).map(h=>'<tr><td>'+h.time+'</td><td>'+h.side+'</td><td>'+h.entry.toFixed(2)+'</td><td>'+h.exit.toFixed(2)+'</td><td class="'+(h.pnl>=0?'positive':'negative')+'">'+money(h.pnl)+'</td><td>'+h.reason+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Belum ada riwayat</td></tr>';
  draw();
 }
@@ -195,12 +196,12 @@ $('jSave').onclick=async()=>{if(!session){alert('Login dulu.');return}const entr
 $('jRefresh').onclick=loadJournal;
 $('journalRows').onclick=async e=>{const id=e.target.dataset.close,del=e.target.dataset.delete;if(id){const exit=Number(prompt('Harga penutupan demo'));if(!(exit>0))return;const {error}=await sb.from('demo_trades').update({status:'CLOSED',exit_price:exit,closed_at:new Date().toISOString()}).eq('id',id);if(error)alert(error.message);else loadJournal()}if(del&&confirm('Hapus catatan ini?')){const {error}=await sb.from('demo_trades').delete().eq('id',del);if(error)alert(error.message);else loadJournal()}};
 $('buy').onclick=()=>openSim('BUY');$('sell').onclick=()=>openSim('SELL');
-$('closeAll').onclick=()=>{for(let i=sim.positions.length-1;i>=0;i--)closePos(i,candles.at(-1).c,'Manual close')};
-$('kill').onclick=()=>{for(let i=sim.positions.length-1;i>=0;i--)closePos(i,candles.at(-1).c,'Kill switch');msg('autoStatus','PAUSED');msg('engineState','ANALISIS SAJA')};
+ $('closeAll').onclick=()=>{if(!feedOK||!candles.length){alert('Tidak bisa menutup posisi simulasi: harga valid belum tersedia.');return}for(let i=sim.positions.length-1;i>=0;i--)closePos(i,candles.at(-1).c,'Manual close')};
+ $('kill').onclick=()=>{if(sim.positions.length&&(!feedOK||!candles.length)){alert('KILL SWITCH: tidak ada feed harga valid untuk menutup posisi simulasi. Posisi tetap tercatat; jangan anggap sudah ditutup.');msg('autoStatus','PAUSED');return}for(let i=sim.positions.length-1;i>=0;i--)closePos(i,candles.at(-1).c,'Kill switch');msg('autoStatus','PAUSED');msg('engineState','ANALISIS SAJA')};
 $('toggleAuto').onclick=()=>alert('Autopilot otomatis dinonaktifkan. Dashboard ini belum memiliki MT5 bridge/EA, sehingga tidak boleh membuat posisi otomatis seolah-olah order broker.');
 $('nextCandle').onclick=loadMarketCandles;
 $('timeframes').onclick=e=>{const v=e.target.dataset.tf;if(!v||!TF_MS[v])return;tf=v;document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));clearFeed('Mengganti timeframe ke '+tf+'; mengambil ulang candle…');loadMarketCandles()};
-$('positions').onclick=e=>{const i=e.target.dataset.close;if(i!==undefined)closePos(Number(i),candles.at(-1).c,'Manual close')};
+ $('positions').onclick=e=>{const i=e.target.dataset.close;if(i!==undefined){if(!feedOK||!candles.length){alert('Feed harga tidak tersedia. Posisi belum ditutup.');return}closePos(Number(i),candles.at(-1).c,'Manual close')}};
 $('saveSettings').onclick=()=>{const capital=Number($('capital').value),risk=Number($('risk').value),limit=Number($('dailyLimit').value),trades=Number($('maxTrades').value);if(![capital,risk,limit,trades].every(Number.isFinite)||capital<10||capital>1000000||risk<.1||risk>2||limit<.5||limit>5||trades<1||trades>10){alert('Modal $10–$1.000.000; risiko 0,1–2%; batas rugi 0,5–5%; maksimal 1–10 transaksi.');return}sim.capital=capital;sim.balance=capital+sim.realized;sim.risk=risk;sim.dailyLimit=limit;sim.maxTrades=Math.floor(trades);msg('riskStatus','Tersimpan. Nilai unit hanya untuk simulasi, bukan ukuran lot HFM.');saveSettings();render()};
 $('reset').onclick=()=>{if(!confirm('Reset akun simulasi lokal dan riwayat?'))return;sim={balance:100,capital:100,risk:.5,dailyLimit:2,maxTrades:3,tradesToday:0,day:today(),realized:0,positions:[],history:[]};['capital','risk','dailyLimit','maxTrades'].forEach((id,i)=>$(id).value=[100,.5,2,3][i]);saveSettings();render()};
 loadSettings();$('capital').value=sim.capital;$('risk').value=sim.risk;$('dailyLimit').value=sim.dailyLimit;$('maxTrades').value=sim.maxTrades;
