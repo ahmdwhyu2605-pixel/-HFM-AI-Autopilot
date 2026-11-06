@@ -12,14 +12,14 @@ Mobile-first XAUUSD analysis, historical backtest, and manual demo journal.
 Project: `rjnghnfmjnqhlswxocoi` (Tokyo)
 
 Edge Functions are version-controlled in `supabase/functions/`:
-- `market-data`: retrieves XAU/USD OHLC from Twelve Data, removes the forming candle, and rejects stale or insufficient history.
+- `market-data`: requires a signed-in user JWT, retrieves XAU/USD OHLC from Twelve Data, removes the forming candle, and rejects stale or insufficient history.
 - `ai-analysis`: authenticated AI research using completed Twelve Data candles, OpenAI, GDELT headlines, and FRED macro series.
 
 Required Supabase Edge Function secrets:
 - `TWELVE_DATA_API_KEY`
 - `OPENAI_API_KEY`
 
-Never place these secrets in GitHub, browser JavaScript, or chat. The frontend contains only the Supabase publishable key.
+Never place these secrets in GitHub, browser JavaScript, or chat. The frontend contains only the Supabase publishable key. The market-data endpoint also requires a valid signed-in user JWT to protect the provider quota.
 
 ## Current capabilities
 - Supabase email signup/login.
@@ -35,7 +35,7 @@ Never place these secrets in GitHub, browser JavaScript, or chat. The frontend c
 - Backtests omit spread, commission, swap, slippage, and broker-specific contract rules; results are research only.
 - Local simulation does not open orders at HFM and its displayed units are not broker lots.
 - **Live MT5 autopilot is not connected yet.** It requires a secure MT5 Expert Advisor/bridge running in MT5 Desktop on Windows or a Windows VPS. MT5 Android cannot run Expert Advisors. Do not use this dashboard for live execution.
-- The `market-data` endpoint is public to support the unauthenticated chart feed; protect the Twelve Data quota and review usage.
+- Market chart access requires login; the public browser bundle does not contain the Twelve Data or OpenAI secrets.
 
 ## Deploy backend changes
 Deploy the matching function from `supabase/functions/<function-name>/index.ts` to the Supabase project. Keep `verify_jwt` settings in `supabase/config.toml` aligned with the live function configuration.
