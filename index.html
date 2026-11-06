@@ -116,8 +116,8 @@ $('cloudAnalyze').onclick=async()=>{
  const a=analysis;if(!a){$('cloudAiOutput').textContent='Indikator belum siap.';return}
  $('cloudAnalyze').disabled=true;$('cloudAiStatus').textContent='MENGANALISIS…';$('cloudAiOutput').textContent='Mengambil berita global dan data makro, lalu menganalisis indikator…';
  try{
-  const candles=chartCandles().slice(-500);
-  const {data,error}=await sbClient.functions.invoke('ai-analysis',{body:{symbol:'XAUUSD',timeframe:state.tf,price:a.price,dataOrigin:'simulated',candles,indicators:{ema20:a.e20,ema50:a.e50,ema200:a.e200,rsi14:a.rsi,adx14:a.adx,atr14:a.atr,ruleSignal:a.signal,ruleReason:a.why}}});
+  if(!externalData)throw new Error('Feed OHLC Twelve Data belum aktif. AI cloud hanya menerima candle yang diambil langsung oleh server.');
+  const {data,error}=await sbClient.functions.invoke('ai-analysis',{body:{symbol:'XAUUSD',timeframe:state.tf}});
   if(error)throw error;
   if(!data?.ok)throw new Error(data?.error||'Analisis AI gagal.');
   const z=data.analysis||{},list=v=>Array.isArray(v)?v.join(' • '):String(v||'Belum tersedia');
@@ -131,10 +131,10 @@ $('cloudAnalyze').onclick=async()=>{
    '\n\nKONFLUENSI\n'+list(z.confluence)+'\n\nRISIKO\n'+list(z.risks)+
    '\n\nDATA KURANG\n'+list(z.missing_data)+'\n\nINVALIDASI\n'+(z.invalidation||'--')+
    '\n\nSUMBER DATA: News '+(data.feeds?.news||'unknown')+' | FRED '+(data.feeds?.macro||'unknown')+
-   '\nAsal candle: '+(data.data_quality?.ohlc_origin||'unknown')+' ('+(data.data_quality?.candle_count??0)+' candle)'+
+   '\nAsal candle: '+(data.data_quality?.provider||'unknown')+' • '+(data.data_quality?.ohlc_origin||'unknown')+' ('+(data.data_quality?.candle_count??0)+' candle)'+
    '\n\nHEADLINE TERKINI\n'+(headlines||'Tidak ada headline yang berhasil diambil')+
    '\n\nDATA MAKRO FRED\n'+macroText+
-   '\n\nPENTING: confidence AI bukan probabilitas menang. Grafik input saat ini masih simulasi; sinyal trading tidak boleh dianggap valid untuk eksekusi.';
+   '\n\nPENTING: confidence AI bukan probabilitas menang. Data Twelve Data adalah harga agregat eksternal, bukan bid/ask atau harga eksekusi HFM. Tidak ada order otomatis.';
   $('cloudAiStatus').textContent='SELESAI • '+new Date().toLocaleTimeString();
  }catch(e){$('cloudAiOutput').textContent='Gagal: '+(e.message||'Tidak dapat menghubungi AI cloud')+'. Periksa sesi login, OPENAI_API_KEY, dan kuota OpenAI.';$('cloudAiStatus').textContent='ERROR'}
  finally{$('cloudAnalyze').disabled=!(await sbClient.auth.getSession()).data.session}
