@@ -45,3 +45,9 @@ Deploy the matching function from `supabase/functions/<function-name>/index.ts` 
 - `system-check` validates that Twelve Data and OpenAI secrets exist and that each provider accepts its key. It never returns secret values.
 - The dashboard's `Tes CRUD jurnal` inserts a temporary row, reads it, updates it, and deletes it using the signed-in user's RLS policies.
 - Backtest history can be read from `strategy_backtests` for the signed-in user.
+
+
+## Diagnostics
+- `system-check` validates whether Twelve Data and OpenAI secrets are configured and whether each provider accepts its key. Secret values are never returned.
+- Backtest results are stored in `strategy_backtests` and can be read by the signed-in user.
+- Journal and backtest access is restricted by per-user Row Level Security policies.
