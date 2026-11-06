@@ -13,7 +13,7 @@ const requiredIds=['authLogin','authRegister','authLogout','cloudAnalyze','jSave
 const missingFeatures=requiredIds.filter(id=>!ids.has(id));
 if(missingFeatures.length)throw new Error('Missing required feature controls: '+missingFeatures.join(', '));
 if(html.includes('Math.random'))throw new Error('Synthetic random market data is forbidden');
-if(!html.includes("Authorization:'Bearer '+session.access_token"))throw new Error('Market feed must send the signed-in user's JWT');
+if(!html.includes("Authorization:'Bearer '+session.access_token"))throw new Error("Market feed must send the signed-in user JWT");
 const config=fs.readFileSync('supabase/config.toml','utf8');
 if(!/\[functions\.market-data\]\s*verify_jwt\s*=\s*true/.test(config))throw new Error('market-data must require JWT');
 if(!/\[functions\.ai-analysis\]\s*verify_jwt\s*=\s*true/.test(config))throw new Error('ai-analysis must require JWT');
