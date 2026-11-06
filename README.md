@@ -39,3 +39,9 @@ Never place these secrets in GitHub, browser JavaScript, or chat. The frontend c
 
 ## Deploy backend changes
 Deploy the matching function from `supabase/functions/<function-name>/index.ts` to the Supabase project. Keep `verify_jwt` settings in `supabase/config.toml` aligned with the live function configuration.
+
+
+## Diagnostics and database smoke tests
+- `system-check` validates that Twelve Data and OpenAI secrets exist and that each provider accepts its key. It never returns secret values.
+- The dashboard's `Tes CRUD jurnal` inserts a temporary row, reads it, updates it, and deletes it using the signed-in user's RLS policies.
+- Backtest history can be read from `strategy_backtests` for the signed-in user.
