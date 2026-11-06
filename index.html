@@ -31,7 +31,13 @@ html,body{width:100%;min-width:320px;min-height:100%;margin:0;overflow-x:hidden}
 <h2>ANALISIS AI CLOUD <span class="status" id="cloudAiStatus">MENUNGGU LOGIN</span></h2>
 <button id="cloudAnalyze" class="btnmain" style="width:100%" disabled>Minta analisis AI cloud</button>
 <div id="cloudAiOutput" class="reason" style="margin-top:10px">AI cloud akan menganalisis indikator yang tersedia. Sinyal hanya opini analitis, bukan perintah transaksi.</div>
-</div><div class="card full" style="margin-bottom:12px">
+</div><div class="card full" style="margin-bottom:12px" id="connectionCheckPanel">
+<h2>DIAGNOSTIK KONEKSI API <span class="status" id="systemCheckStatus">BELUM DIUJI</span></h2>
+<div class="reason">Memeriksa secret Twelve Data dan OpenAI di server Supabase, lalu menguji apakah kedua provider menerima API key. Nilai secret tidak pernah ditampilkan.</div>
+<button id="runSystemCheck" class="btnmain" style="width:100%" disabled>Periksa koneksi API</button>
+<div class="reason" id="systemCheckOutput" style="white-space:pre-wrap;margin-top:10px">Login untuk menjalankan tes koneksi.</div>
+</div>
+<div class="card full" style="margin-bottom:12px">
 <h2>JURNAL TRANSAKSI DEMO CLOUD <span class="status" id="journalStatus">LOGIN DIPERLUKAN</span></h2>
 <div class="two">
  <div class="field"><label>Arah</label><select id="jDirection"><option>BUY</option><option>SELL</option></select></div>
@@ -162,7 +168,7 @@ async function authRefresh(){
  if(!sb)return;const {data,error}=await sb.auth.getSession();session=data?.session||null;
  $('authSignedOut')?.classList.toggle('hidden',!!session);$('authSignedIn')?.classList.toggle('hidden',!session);
  msg('authStatus',session?'LOGIN AKTIF':'BELUM LOGIN');msg('authUser',session?.user?.email||'');
- if($('cloudAnalyze'))$('cloudAnalyze').disabled=!session;
+ if($('cloudAnalyze'))$('cloudAnalyze').disabled=!session;if($('runSystemCheck'))$('runSystemCheck').disabled=!session;
  msg('cloudAiStatus',session?'SIAP':'MENUNGGU LOGIN');
  if(session){loadJournal();loadMarketCandles()}else{msg('journalStatus','LOGIN DIPERLUKAN');clearFeed('Login terlebih dahulu untuk mengakses feed market.');}
  if(error)msg('authMessage',error.message);
@@ -203,6 +209,19 @@ function runBacktest(){
  if(session&&sb){sb.from('strategy_backtests').insert({user_id:session.user.id,symbol:'XAUUSD',timeframe:tf,strategy_name:'EMA20/50 + RSI/ADX + ATR 1.5R/2R',data_source:'Twelve Data XAU/USD completed OHLC',period_start:new Date(start.replace(' ','T')+'Z').toISOString(),period_end:new Date(end.replace(' ','T')+'Z').toISOString(),trades_count:trades.length,wins,losses,win_rate:winRate,profit_factor:pf,expectancy,max_drawdown_pct:maxDD,parameters:{ema_fast:20,ema_slow:50,rsi_period:14,adx_min:18,atr_stop:1.5,reward_risk:2},metrics:{risk_percent_per_trade:0.5,spread_included:false,commission_included:false,swap_included:false,slippage_included:false,trade_samples:trades.slice(-20)}}).then(({error})=>{if(error)msg('backtestStatus','SELESAI • GAGAL SIMPAN');else msg('backtestStatus','SELESAI • TERSIMPAN')})}
  else msg('backtestStatus','SELESAI • LOGIN UNTUK SIMPAN');
 }
+async function runSystemCheck(){
+ if(!session){msg('systemCheckOutput','Login diperlukan.');return}
+ const b=$('runSystemCheck');b.disabled=true;msg('systemCheckStatus','MENGUJI…');msg('systemCheckOutput','Mengecek secret dan koneksi provider dari server…');
+ try{
+  const {data,error}=await sb.functions.invoke('system-check',{body:{}});
+  if(error)throw error;if(!data?.checks)throw Error(data?.error||'Respons diagnostik tidak valid.');
+  const names={twelve_data:'Twelve Data',openai:'OpenAI'};
+  const lines=Object.entries(data.checks).map(([k,v])=>{const x=v;return names[k]+': '+(x.connected?'TERHUBUNG':x.configured?'KEY ADA • KONEKSI GAGAL':'SECRET BELUM ADA')+'\n'+(x.message||'')+(x.http_status?' (HTTP '+x.http_status+')':'')});
+  $('systemCheckOutput').textContent=lines.join('\n\n')+'\n\nDiperiksa: '+new Date(data.checked_at||Date.now()).toLocaleString();
+  msg('systemCheckStatus',data.ok?'SEMUA TERHUBUNG':'ADA YANG BERMASALAH');
+ }catch(e){$('systemCheckOutput').textContent='DIAGNOSTIK GAGAL: '+(e.message||'Unknown error')+'\nPastikan sesi login masih berlaku dan Edge Function system-check aktif.';msg('systemCheckStatus','ERROR')}
+ finally{b.disabled=!session}
+}
 async function cloudAnalysis(){
  if(!session){msg('cloudAiOutput','Login diperlukan.');return}
  if(!feedOK){msg('cloudAiOutput','Analisis dihentikan: feed candle belum valid.');return}
@@ -222,6 +241,7 @@ $('authLogin').onclick=async()=>{const email=$('authEmail').value.trim(),passwor
 $('authRegister').onclick=async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||password.length<6){msg('authMessage','Isi email valid dan password minimal 6 karakter.');return}msg('authMessage','Membuat akun…');const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.href.split('#')[0]}});if(error){msg('authMessage',error.message);return}msg('authMessage',data.session?'Akun dibuat dan login berhasil.':'Akun dibuat. Cek email konfirmasi, lalu login.');await authRefresh()};
 $('authLogout').onclick=async()=>{const {error}=await sb.auth.signOut();msg('authMessage',error?'Gagal keluar: '+error.message:'Berhasil keluar.');await authRefresh()};
 $('cloudAnalyze').onclick=cloudAnalysis;
+ $('runSystemCheck').onclick=runSystemCheck;
  $('runBacktest').onclick=runBacktest;
 $('jSave').onclick=async()=>{if(!session){alert('Login dulu.');return}const entry=Number($('jEntry').value),lot=Number($('jLot').value),sl=$('jSL').value?Number($('jSL').value):null,tp=$('jTP').value?Number($('jTP').value):null,dir=$('jDirection').value;const invalidSide=dir==='BUY'?((sl!==null&&sl>=entry)||(tp!==null&&tp<=entry)):((sl!==null&&sl<=entry)||(tp!==null&&tp>=entry));if(!(entry>0&&lot>0)||(sl!==null&&!(sl>0))||(tp!==null&&!(tp>0))||invalidSide){alert('Entry/lot harus valid. Untuk BUY, SL di bawah entry dan TP di atas; untuk SELL kebalikannya.');return}const {error}=await sb.from('demo_trades').insert({user_id:session.user.id,symbol:'XAUUSD',direction:dir,timeframe:$('jTimeframe').value,entry_price:entry,stop_loss:sl,take_profit:tp,lot_size:lot,notes:$('jNotes').value||null});if(error)alert(error.message);else loadJournal()};
 $('jRefresh').onclick=loadJournal;
