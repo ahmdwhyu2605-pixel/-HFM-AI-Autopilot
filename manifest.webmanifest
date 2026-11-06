@@ -1,0 +1,11 @@
+{
+  "name": "HFM AI Autopilot",
+  "short_name": "HFM Autopilot",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#080d18",
+  "theme_color": "#080d18",
+  "description": "Terminal simulasi analisis XAUUSD dan manajemen risiko.",
+  "icons": []
+}
