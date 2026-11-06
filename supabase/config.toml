@@ -1,0 +1,7 @@
+project_id = "rjnghnfmjnqhlswxocoi"
+
+[functions.market-data]
+verify_jwt = false
+
+[functions.ai-analysis]
+verify_jwt = true
