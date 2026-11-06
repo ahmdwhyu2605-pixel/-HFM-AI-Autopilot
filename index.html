@@ -140,10 +140,11 @@ function clearFeed(error){
 }
 function startMarketTimer(){if(marketTimer)clearInterval(marketTimer);marketTimer=setInterval(loadMarketCandles,Math.max(60000,TF_MS[tf]));}
 async function loadMarketCandles(){
+ if(!session){clearFeed('Login terlebih dahulu untuk mengakses feed market.');return}
  msg('livePriceStatus','MENGAMBIL DATA…');
  try{
   const url=URL+'/functions/v1/market-data?timeframe='+encodeURIComponent(tf)+'&limit=350';
-  const r=await fetch(url,{headers:{apikey:PUBLIC_KEY,Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(18000)});
+  const r=await fetch(url,{headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+session.access_token,Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(18000)});
   const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Feed provider gagal');
   if(!Array.isArray(d.candles))throw Error('Format OHLC tidak valid');
   let arr=d.candles.map(c=>({o:Number(c.o),h:Number(c.h),l:Number(c.l),c:Number(c.c),time:String(c.time||'')})).filter(c=>c.time&&[c.o,c.h,c.l,c.c].every(Number.isFinite)&&c.h>=Math.max(c.o,c.c,c.l)&&c.l<=Math.min(c.o,c.c,c.h));
@@ -163,7 +164,7 @@ async function authRefresh(){
  msg('authStatus',session?'LOGIN AKTIF':'BELUM LOGIN');msg('authUser',session?.user?.email||'');
  if($('cloudAnalyze'))$('cloudAnalyze').disabled=!session;
  msg('cloudAiStatus',session?'SIAP':'MENUNGGU LOGIN');
- if(session)loadJournal();else msg('journalStatus','LOGIN DIPERLUKAN');
+ if(session){loadJournal();loadMarketCandles()}else{msg('journalStatus','LOGIN DIPERLUKAN');clearFeed('Login terlebih dahulu untuk mengakses feed market.');}
  if(error)msg('authMessage',error.message);
 }
 async function loadJournal(){
