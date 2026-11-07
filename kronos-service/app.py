@@ -2,7 +2,6 @@ import os, threading
 from datetime import datetime, timedelta
 from typing import Literal
 import pandas as pd
-import torch
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
@@ -48,6 +47,7 @@ class RequestBody(BaseModel):
   return x
 
 def predictor():
+ import torch
  global _predictor,_state
  if _predictor is not None:return _predictor
  with _load_lock:
@@ -86,6 +86,7 @@ def health(): return {"ok":True,"service":"hfm-kronos","model":MODEL_ID,"tokeniz
 
 @app.post("/forecast-mtf")
 def forecast_mtf(body:RequestBody,authorization:str|None=Header(default=None)):
+ import torch
  if not SERVICE_TOKEN or authorization!=f"Bearer {SERVICE_TOKEN}": raise HTTPException(401,"Unauthorized")
  try:
   ordered=sorted(body.timeframes,key=lambda x:("M5","M15","H1").index(x.timeframe))
