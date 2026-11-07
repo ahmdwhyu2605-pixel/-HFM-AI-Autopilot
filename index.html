@@ -31,7 +31,7 @@ html,body{width:100%;min-width:320px;min-height:100%;margin:0;overflow-x:hidden}
 <h2>ANALISIS AI CLOUD <span class="status" id="cloudAiStatus">MENUNGGU LOGIN</span></h2>
 <button id="cloudAnalyze" class="btnmain" style="width:100%" disabled>Minta analisis AI cloud</button>
 <div id="cloudAiOutput" class="reason" style="margin-top:10px">AI cloud akan menganalisis indikator yang tersedia. Sinyal hanya opini analitis, bukan perintah transaksi.</div>
-</div><div class="card full" style="margin-bottom:12px" id="kronosPanel"><h2>KRONOS-BASE FORECAST <span class="status" id="kronosStatus">BELUM DIHOSTING</span></h2><div class="reason">Forecast OHLCV dari model Kronos-base untuk M5, M15, dan H1. Service model perlu di-deploy ke hosting Python terlebih dahulu. Tidak mengirim order.</div><button id="runKronos" class="btnmain" style="width:100%" disabled>Jalankan forecast Kronos</button><div class="reason" id="kronosOutput" style="white-space:pre-wrap;margin-top:10px">Menunggu deployment Kronos inference service.</div></div><div class="card full" style="margin-bottom:12px" id="connectionCheckPanel">
+</div><div class="card full" style="margin-bottom:12px" id="kronosPanel"><h2>KRONOS-BASE • 5 SCENARIO <span class="status" id="kronosStatus">CLOUD BELUM DICEK</span></h2><div class="reason">Model Kronos-base menghasilkan lima jalur forecast terpisah untuk M5, M15, H1. Persetujuan MTF hanya ringkasan arah skenario model, bukan probabilitas profit. Data Twelve Data bukan harga broker HFM. Tidak mengirim order.</div><button id="runKronos" class="btnmain" style="width:100%" disabled>Jalankan forecast Kronos</button><div class="reason" id="kronosOutput" style="white-space:pre-wrap;margin-top:10px">Menunggu deployment Kronos inference service.</div></div><div class="card full" style="margin-bottom:12px" id="connectionCheckPanel">
 <h2>DIAGNOSTIK KONEKSI API <span class="status" id="systemCheckStatus">BELUM DIUJI</span></h2>
 <div class="reason">Memeriksa secret Twelve Data dan OpenAI di server Supabase, lalu menguji apakah kedua provider menerima API key. Nilai secret tidak pernah ditampilkan.</div>
 <button id="runSystemCheck" class="btnmain" style="width:100%" disabled>Periksa koneksi API</button>
@@ -215,7 +215,7 @@ async function runSystemCheck(){
  try{
   const {data,error}=await sb.functions.invoke('system-check',{body:{}});
   if(error)throw error;if(!data?.checks)throw Error(data?.error||'Respons diagnostik tidak valid.');
-  const names={twelve_data:'Twelve Data',openai:'OpenAI'};
+  const names={twelve_data:'Twelve Data',openai:'OpenAI',kronos:'Kronos cloud'};
   const lines=Object.entries(data.checks).map(([k,v])=>{const x=v;return names[k]+': '+(x.connected?'TERHUBUNG':x.configured?'KEY ADA • KONEKSI GAGAL':'SECRET BELUM ADA')+'\n'+(x.message||'')+(x.http_status?' (HTTP '+x.http_status+')':'')});
   $('systemCheckOutput').textContent=lines.join('\n\n')+'\n\nDiperiksa: '+new Date(data.checked_at||Date.now()).toLocaleString();
   msg('systemCheckStatus',data.ok?'SEMUA TERHUBUNG':'ADA YANG BERMASALAH');
@@ -228,7 +228,7 @@ async function runKronosForecast(){
  try{
   const {data,error}=await sb.functions.invoke('kronos-forecast',{body:{symbol:'XAUUSD'}});
   if(error)throw error;if(!data?.ok)throw Error(data?.error||'Forecast Kronos gagal');
-  const m=data.multi_timeframe||{},fmt=x=>{if(!x)return 'Tidak tersedia';const f=x.forecast||[];return 'Arah model: '+x.direction+'\nHarga terakhir: '+Number(x.last_close).toFixed(2)+'\nHarga forecast akhir: '+Number(x.forecast_close).toFixed(2)+'\n6 candle prediksi:\n'+f.map(z=>z.time+' | O '+Number(z.open).toFixed(2)+' H '+Number(z.high).toFixed(2)+' L '+Number(z.low).toFixed(2)+' C '+Number(z.close).toFixed(2)).join('\n')};
+  const m=data.multi_timeframe||{},fmt=x=>{if(!x)return 'Tidak tersedia';const f=x.forecast||[],counts=x.scenario_counts||{};return 'Arah dominan: '+x.direction+' | Kesepakatan sampel: '+(x.scenario_consensus_pct??'--')+'%\nJumlah skenario: BUY '+(counts.BUY||0)+' / SELL '+(counts.SELL||0)+' / WAIT '+(counts.WAIT||0)+'\nJalur median 6 candle:\n'+f.map(z=>z.time+' | O '+Number(z.open).toFixed(2)+' H '+Number(z.high).toFixed(2)+' L '+Number(z.low).toFixed(2)+' C '+Number(z.close).toFixed(2)).join('\n')+'\n\nLima skenario akhir: '+(x.scenarios||[]).map(s=>'#'+s.scenario+' '+s.direction+' '+Number(s.forecast?.[5]?.close).toFixed(2)).join(' | ')};
   $('kronosOutput').textContent='KESEPAKATAN MTF: '+data.agreement+'\nARAH: '+data.direction+'\n\nM5\n'+fmt(m.M5)+'\n\nM15\n'+fmt(m.M15)+'\n\nH1\n'+fmt(m.H1)+'\n\nMODEL: '+data.model+'\nSUMBER: '+data.source+'\n\nTidak ada confidence terkalibrasi dan tidak ada order broker.';
   msg('kronosStatus',data.agreement==='ALIGNED'?'SEARAH • FORECAST':'TIDAK SEARAH • WAIT');
  }catch(e){$('kronosOutput').textContent='BELUM BERHASIL: '+(e.message||'Forecast gagal')+'\nService Kronos belum siap atau belum di-hosting. Periksa KRONOS_API_URL dan KRONOS_SERVICE_TOKEN di Supabase.';msg('kronosStatus','BELUM SIAP')}
@@ -243,7 +243,7 @@ async function loadBacktestHistory(){
 }
 async function cloudAnalysis(){
  if(!session){msg('cloudAiOutput','Login diperlukan.');return}
- if(!feedOK){msg('cloudAiOutput','Analisis dihentikan: feed candle belum valid.');return}
+ 
  const b=$('cloudAnalyze');b.disabled=true;msg('cloudAiStatus','MENGANALISIS…');msg('cloudAiOutput','Mengambil data server dan menjalankan analisis…');
  try{
   const {data,error}=await sb.functions.invoke('ai-analysis',{body:{symbol:'XAUUSD',timeframe:tf}});
