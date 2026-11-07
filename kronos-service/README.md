@@ -1,27 +1,24 @@
-# HFM Kronos inference service
+---
+title: HFM Kronos Forecast
+emoji: 📈
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
 
-This service runs the official Kronos Python implementation and pretrained model. It does not connect to a broker and never places trades.
+# HFM Kronos Forecast Service
 
-## Deploy
-Deploy this directory as a Docker web service on a host with persistent disk/cache and enough RAM. Kronos-base is 102.3M parameters; allow several GB of RAM for Python/PyTorch plus model weights. A free 512 MB web container is not sufficient. Set the environment variables in `.env.example` in the hosting dashboard. Do not commit real secrets.
+Official NeoQuasar/Kronos-base. Returns five independently sampled paths for M5/M15/H1.
 
-The first `/forecast` request downloads the model weights from Hugging Face and can take several minutes. Subsequent requests reuse the in-memory model. Health check path: `/health`.
+## Deploy from Android
+1. Open https://huggingface.co/new-space in Chrome. Create Docker Space named hfm-kronos.
+2. Copy app.py, Dockerfile, requirements.txt and this README into the Space repository root.
+3. In Space Settings → Variables and secrets add KRONOS_SERVICE_TOKEN with a long random value. Never publish it.
+4. Wait until Space is Running. Test /health; it must return ok:true. First forecast downloads model weights.
+5. In Supabase → Edge Functions → Secrets set KRONOS_API_URL to the Space URL (no trailing slash) and KRONOS_SERVICE_TOKEN to the same value.
 
-## API
-`POST /forecast` requires `Authorization: Bearer <KRONOS_SERVICE_TOKEN>` and JSON:
-```json
-{
-  "symbol": "XAUUSD",
-  "timeframe": "M5",
-  "candles": [
-    {"time":"2026-11-06T10:00:00Z","open":2800,"high":2802,"low":2799,"close":2801,"volume":100}
-  ]
-}
-```
-Supply 210–512 completed candles in chronological order. This API returns a six-bar model forecast. The returned direction is only the sign of the final forecast close versus the last observed close; it is not a trading signal, probability, or order instruction.
+Optional variables: KRONOS_MODEL_ID=NeoQuasar/Kronos-base, KRONOS_TOKENIZER_ID=NeoQuasar/Kronos-Tokenizer-base, TORCH_NUM_THREADS=2.
 
-## Important
-- Use only completed candles. Caller is responsible for verifying the source and timestamps.
-- Forecasting quality is not guaranteed. Validate on out-of-sample XAUUSD broker data before any trading.
-- Do not expose this service publicly without the bearer token.
-- The official model's inference API expects OHLCV and timestamps. See https://github.com/shiyu-coder/Kronos and https://huggingface.co/NeoQuasar/Kronos-base.
+Free CPU hosting can sleep, cold-start or run out of memory/time. Upgrade hardware if required. This service never places orders. Scenario consensus is not a win probability.
