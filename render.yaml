@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: hfm-kronos
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: kronos-service
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: KRONOS_SERVICE_TOKEN
+        generateValue: true
+      - key: PORT
+        value: "10000"
+      - key: TORCH_NUM_THREADS
+        value: "1"
+      - key: HF_HOME
+        value: /tmp/huggingface
