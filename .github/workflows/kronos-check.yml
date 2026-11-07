@@ -20,13 +20,23 @@ jobs:
         run: python -m pip install fastapi pandas pydantic
       - name: Compile service
         run: python -m compileall -q kronos-service
-      - name: Import API and verify routes
+      - name: Import API and validate MTF schema
         run: |
           cd kronos-service
           python - <<'PY'
-          from app import app
+          from datetime import datetime, timedelta, timezone
+          from app import app, RequestBody
           paths = {route.path for route in app.routes}
           assert "/health" in paths
-          assert "/forecast" in paths
-          print("Kronos API routes OK:", sorted(paths))
+          assert "/forecast-mtf" in paths
+          bars = []
+          start = datetime.now(timezone.utc) - timedelta(minutes=5*220)
+          for i in range(220):
+              p = 2000 + i * 0.01
+              bars.append({"time": start + timedelta(minutes=5*i), "open": p, "high": p+1, "low": p-1, "close": p+0.2, "volume": 0})
+          body = RequestBody(symbol="XAUUSD", timeframes=[
+              {"timeframe": tf, "candles": bars} for tf in ("M5", "M15", "H1")
+          ])
+          assert len(body.timeframes) == 3
+          print("Kronos API routes and OHLCV schema OK:", sorted(paths))
           PY
