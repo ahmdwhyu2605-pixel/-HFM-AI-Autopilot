@@ -21,5 +21,11 @@ Deno.serve(async(req:Request)=>{
   const r=await fetch("https://api.openai.com/v1/models/gpt-4o-mini",{headers:{"Authorization":"Bearer "+oa,"Accept":"application/json"},signal:AbortSignal.timeout(12000)}),d=await r.json();
   checks.openai={configured:true,connected:r.ok,http_status:r.status,message:r.ok?"API key diterima; model gpt-4o-mini dapat diakses.":String(d.error?.message||"OpenAI menolak API key atau model tidak tersedia.").slice(0,180)};
  }catch(e){checks.openai={configured:true,connected:false,message:e instanceof Error?e.message:"Koneksi OpenAI gagal."}}
- return json({ok:checks.twelve_data.connected&&checks.openai.connected,checks,checked_at:new Date().toISOString()});
+ const kronosUrl=Deno.env.get("KRONOS_API_URL")||"",kronosToken=Deno.env.get("KRONOS_SERVICE_TOKEN")||"";
+ if(!kronosUrl||!kronosToken)checks.kronos={configured:false,connected:false,message:"KRONOS_API_URL atau KRONOS_SERVICE_TOKEN belum dipasang."};
+ else try{
+  const r=await fetch(kronosUrl.replace(/\\/$/,"")+"/health",{headers:{"Accept":"application/json"},signal:AbortSignal.timeout(12000)}),d=await r.json();
+  checks.kronos={configured:true,connected:r.ok&&d.ok===true,http_status:r.status,model:d.model||"unknown",model_state:d.model_state||"unknown",message:r.ok?"Service Kronos merespons. Model dimuat saat permintaan forecast pertama.":String(d.detail||"Kronos health check gagal.").slice(0,180)};
+ }catch(e){checks.kronos={configured:true,connected:false,message:e instanceof Error?e.message:"Kronos tidak dapat dijangkau."}}
+ return json({ok:checks.twelve_data.connected&&checks.openai.connected&&checks.kronos?.connected,checks,checked_at:new Date().toISOString()});
 });
