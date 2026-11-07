@@ -31,7 +31,7 @@ html,body{width:100%;min-width:320px;min-height:100%;margin:0;overflow-x:hidden}
 <h2>ANALISIS AI CLOUD <span class="status" id="cloudAiStatus">MENUNGGU LOGIN</span></h2>
 <button id="cloudAnalyze" class="btnmain" style="width:100%" disabled>Minta analisis AI cloud</button>
 <div id="cloudAiOutput" class="reason" style="margin-top:10px">AI cloud akan menganalisis indikator yang tersedia. Sinyal hanya opini analitis, bukan perintah transaksi.</div>
-</div><div class="card full" style="margin-bottom:12px" id="connectionCheckPanel">
+</div><div class="card full" style="margin-bottom:12px" id="kronosPanel"><h2>KRONOS-BASE FORECAST <span class="status" id="kronosStatus">BELUM DIHOSTING</span></h2><div class="reason">Forecast OHLCV dari model Kronos-base untuk M5, M15, dan H1. Service model perlu di-deploy ke hosting Python terlebih dahulu. Tidak mengirim order.</div><button id="runKronos" class="btnmain" style="width:100%" disabled>Jalankan forecast Kronos</button><div class="reason" id="kronosOutput" style="white-space:pre-wrap;margin-top:10px">Menunggu deployment Kronos inference service.</div></div><div class="card full" style="margin-bottom:12px" id="connectionCheckPanel">
 <h2>DIAGNOSTIK KONEKSI API <span class="status" id="systemCheckStatus">BELUM DIUJI</span></h2>
 <div class="reason">Memeriksa secret Twelve Data dan OpenAI di server Supabase, lalu menguji apakah kedua provider menerima API key. Nilai secret tidak pernah ditampilkan.</div>
 <button id="runSystemCheck" class="btnmain" style="width:100%" disabled>Periksa koneksi API</button>
@@ -168,7 +168,7 @@ async function authRefresh(){
  if(!sb)return;const {data,error}=await sb.auth.getSession();session=data?.session||null;
  $('authSignedOut')?.classList.toggle('hidden',!!session);$('authSignedIn')?.classList.toggle('hidden',!session);
  msg('authStatus',session?'LOGIN AKTIF':'BELUM LOGIN');msg('authUser',session?.user?.email||'');
- if($('cloudAnalyze'))$('cloudAnalyze').disabled=!session;if($('runSystemCheck'))$('runSystemCheck').disabled=!session;
+ if($('cloudAnalyze'))$('cloudAnalyze').disabled=!session;if($('runSystemCheck'))$('runSystemCheck').disabled=!session;if($('runKronos'))$('runKronos').disabled=!session;
  msg('cloudAiStatus',session?'SIAP':'MENUNGGU LOGIN');
  if(session){loadJournal();loadBacktestHistory();loadMarketCandles()}else{msg('journalStatus','LOGIN DIPERLUKAN');clearFeed('Login terlebih dahulu untuk mengakses feed market.');}
  if(error)msg('authMessage',error.message);
@@ -222,6 +222,18 @@ async function runSystemCheck(){
  }catch(e){$('systemCheckOutput').textContent='DIAGNOSTIK GAGAL: '+(e.message||'Unknown error')+'\nPastikan sesi login masih berlaku dan Edge Function system-check aktif.';msg('systemCheckStatus','ERROR')}
  finally{b.disabled=!session}
 }
+async function runKronosForecast(){
+ if(!session){msg('kronosOutput','Login diperlukan.');return}
+ const b=$('runKronos');b.disabled=true;msg('kronosStatus','MENGAMBIL DATA…');msg('kronosOutput','Mengambil candle selesai M5/M15/H1 dan meminta prediksi Kronos-base…');
+ try{
+  const {data,error}=await sb.functions.invoke('kronos-forecast',{body:{symbol:'XAUUSD'}});
+  if(error)throw error;if(!data?.ok)throw Error(data?.error||'Forecast Kronos gagal');
+  const m=data.multi_timeframe||{},fmt=x=>{if(!x)return 'Tidak tersedia';const f=x.forecast||[];return 'Arah model: '+x.direction+'\nHarga terakhir: '+Number(x.last_close).toFixed(2)+'\nHarga forecast akhir: '+Number(x.forecast_close).toFixed(2)+'\n6 candle prediksi:\n'+f.map(z=>z.time+' | O '+Number(z.open).toFixed(2)+' H '+Number(z.high).toFixed(2)+' L '+Number(z.low).toFixed(2)+' C '+Number(z.close).toFixed(2)).join('\n')};
+  $('kronosOutput').textContent='KESEPAKATAN MTF: '+data.agreement+'\nARAH: '+data.direction+'\n\nM5\n'+fmt(m.M5)+'\n\nM15\n'+fmt(m.M15)+'\n\nH1\n'+fmt(m.H1)+'\n\nMODEL: '+data.model+'\nSUMBER: '+data.source+'\n\nTidak ada confidence terkalibrasi dan tidak ada order broker.';
+  msg('kronosStatus',data.agreement==='ALIGNED'?'SEARAH • FORECAST':'TIDAK SEARAH • WAIT');
+ }catch(e){$('kronosOutput').textContent='BELUM BERHASIL: '+(e.message||'Forecast gagal')+'\nService Kronos belum siap atau belum di-hosting. Periksa KRONOS_API_URL dan KRONOS_SERVICE_TOKEN di Supabase.';msg('kronosStatus','BELUM SIAP')}
+ finally{b.disabled=!session}
+}
 async function loadBacktestHistory(){
  if(!session){msg('backtestHistory','Login diperlukan.');return}
  msg('backtestHistory','Memuat riwayat…');
@@ -249,7 +261,7 @@ $('authLogin').onclick=async()=>{const email=$('authEmail').value.trim(),passwor
  $('authForgot').onclick=async()=>{const email=$('authEmail').value.trim();if(!email){msg('authMessage','Isi email akun terlebih dahulu.');return}const b=$('authForgot');b.disabled=true;msg('authMessage','Meminta tautan reset password…');try{const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.href.split('#')[0]});msg('authMessage',error?'Reset gagal: '+error.message:'Jika email terdaftar, tautan reset akan dikirim. Periksa Inbox dan Spam.')}catch(e){msg('authMessage','Reset gagal: '+(e.message||'kesalahan jaringan'))}finally{b.disabled=false}};
 $('authRegister').onclick=async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||password.length<6){msg('authMessage','Isi email valid dan password minimal 6 karakter.');return}msg('authMessage','Membuat akun…');const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.href.split('#')[0]}});if(error){msg('authMessage',error.message);return}msg('authMessage',data.session?'Akun dibuat dan login berhasil.':'Akun dibuat. Cek email konfirmasi, lalu login.');await authRefresh()};
 $('authLogout').onclick=async()=>{const {error}=await sb.auth.signOut();msg('authMessage',error?'Gagal keluar: '+error.message:'Berhasil keluar.');await authRefresh()};
-$('cloudAnalyze').onclick=cloudAnalysis;
+$('cloudAnalyze').onclick=cloudAnalysis;$('runKronos').onclick=runKronosForecast;
  $('runSystemCheck').onclick=runSystemCheck;
  $('runBacktest').onclick=runBacktest;
  $('refreshBacktests').onclick=loadBacktestHistory;
