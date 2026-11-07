@@ -92,17 +92,16 @@ def forecast_mtf(body:RequestBody,authorization:str|None=Header(default=None)):
  if not SERVICE_TOKEN or authorization!=f"Bearer {SERVICE_TOKEN}": raise HTTPException(401,"Unauthorized")
  try:
   ordered=sorted(body.timeframes,key=lambda x:("M5","M15","H1").index(x.timeframe))
-  dfs=[];xts=[];yts=[];labels=[]
-  for item in ordered:
-   df,xt,yt=frame_for(item)
-   for n in range(SCENARIOS):
-    dfs.append(df.copy());xts.append(xt.copy());yts.append(yt.copy());labels.append((item.timeframe,n+1))
   p=predictor()
-  # sample_count averages paths; duplicated batch entries preserve five independent sampled paths.
-  with _infer_lock,torch.inference_mode():
-   outputs=p.predict_batch(df_list=dfs,x_timestamp_list=xts,y_timestamp_list=yts,pred_len=6,T=1.0,top_k=0,top_p=0.9,sample_count=1,verbose=False)
   grouped={k:[] for k in ("M5","M15","H1")}
-  for (tf,n),out in zip(labels,outputs):grouped[tf].append({"scenario":n,"forecast":rows_for(out)})
+  # Run one path at a time: avoids a 15-series batch exhausting small CPU instances.
+  # sample_count=1 returns one sampled path; repeated calls create independent paths.
+  with _infer_lock,torch.inference_mode():
+   for item in ordered:
+    df,xt,yt=frame_for(item)
+    for n in range(SCENARIOS):
+     out=p.predict(df=df,x_timestamp=xt,y_timestamp=yt,pred_len=6,T=1.0,top_k=0,top_p=0.9,sample_count=1,verbose=False)
+     grouped[item.timeframe].append({"scenario":n+1,"forecast":rows_for(out)})
   result={}
   for item in ordered:
    tf=item.timeframe;last=float(item.candles[-1].close);paths=grouped[tf]
