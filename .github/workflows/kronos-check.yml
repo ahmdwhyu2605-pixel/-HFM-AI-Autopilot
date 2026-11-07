@@ -1,0 +1,32 @@
+name: Validate Kronos service
+on:
+  push:
+    paths:
+      - "kronos-service/**"
+      - ".github/workflows/kronos-check.yml"
+  pull_request:
+    paths:
+      - "kronos-service/**"
+      - ".github/workflows/kronos-check.yml"
+jobs:
+  python-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install API validation dependencies
+        run: python -m pip install fastapi pandas pydantic
+      - name: Compile service
+        run: python -m compileall -q kronos-service
+      - name: Import API and verify routes
+        run: |
+          cd kronos-service
+          python - <<'PY'
+          from app import app
+          paths = {route.path for route in app.routes}
+          assert "/health" in paths
+          assert "/forecast" in paths
+          print("Kronos API routes OK:", sorted(paths))
+          PY
