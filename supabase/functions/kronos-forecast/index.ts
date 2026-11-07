@@ -1,63 +1,31 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-const cors={
- "Access-Control-Allow-Origin":"https://ahmdwhyu2605-pixel.github.io",
- "Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type",
- "Access-Control-Allow-Methods":"POST, OPTIONS","Vary":"Origin"
-};
-const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
-const intervals:Record<string,{api:string,ms:number}>={
- M5:{api:"5min",ms:300000},M15:{api:"15min",ms:900000},H1:{api:"1h",ms:3600000}
-};
-async function candles(tf:string,key:string){
- const spec=intervals[tf];if(!spec)throw new Error("Timeframe Kronos hanya M5, M15, H1.");
- const u=new URL("https://api.twelvedata.com/time_series");
- u.searchParams.set("symbol","XAU/USD");u.searchParams.set("interval",spec.api);
- u.searchParams.set("outputsize","350");u.searchParams.set("timezone","UTC");u.searchParams.set("apikey",key);
- const r=await fetch(u,{signal:AbortSignal.timeout(18000),headers:{"Accept":"application/json"}});
- const d=await r.json();
- if(!r.ok||d.status==="error"||!Array.isArray(d.values))throw new Error("Twelve Data: "+String(d.message||d.code||"OHLC tidak tersedia").slice(0,180));
- let cs=d.values.map((v:any)=>({time:String(v.datetime||"").replace(" ","T")+"Z",open:Number(v.open),high:Number(v.high),low:Number(v.low),close:Number(v.close),volume:Number(v.volume)||0}))
- .filter((c:any)=>c.time&&[c.open,c.high,c.low,c.close].every(Number.isFinite)&&c.high>=Math.max(c.open,c.close,c.low)&&c.low<=Math.min(c.open,c.close,c.high)).reverse();
- const last=cs.at(-1),stamp=last?Date.parse(last.time):NaN;
- if(Number.isFinite(stamp)&&Date.now()-stamp<spec.ms)cs.pop();
- if(cs.length<210)throw new Error(tf+" candle selesai kurang dari 210 ("+cs.length+").");
- const t=Date.parse(cs.at(-1).time);
- if(!Number.isFinite(t)||Date.now()-t>spec.ms*4)throw new Error(tf+" candle stale/kedaluwarsa.");
- return cs.slice(-512);
+const cors={"Access-Control-Allow-Origin":"https://ahmdwhyu2605-pixel.github.io","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS","Vary":"Origin"};
+const json=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
+const intervals:Record<string,{api:string,ms:number}>={M5:{api:"5min",ms:300000},M15:{api:"15min",ms:900000},H1:{api:"1h",ms:3600000}};
+async function fetchBars(tf:string,key:string){
+ const spec=intervals[tf],u=new URL("https://api.twelvedata.com/time_series");
+ u.searchParams.set("symbol","XAU/USD");u.searchParams.set("interval",spec.api);u.searchParams.set("outputsize","350");u.searchParams.set("timezone","UTC");u.searchParams.set("apikey",key);
+ const r=await fetch(u,{signal:AbortSignal.timeout(18000)}),d=await r.json();
+ if(!r.ok||d.status==="error"||!Array.isArray(d.values))throw Error("Twelve Data "+tf+": "+String(d.message||d.code||"OHLC unavailable").slice(0,150));
+ let a=d.values.map((v:any)=>({time:String(v.datetime||"").replace(" ","T")+"Z",open:Number(v.open),high:Number(v.high),low:Number(v.low),close:Number(v.close),volume:Number(v.volume)||0})).filter((x:any)=>x.time&&[x.open,x.high,x.low,x.close].every(Number.isFinite)&&x.high>=Math.max(x.open,x.close,x.low)&&x.low<=Math.min(x.open,x.close,x.high)).reverse();
+ const last=a.at(-1),stamp=last?Date.parse(last.time):NaN;if(Number.isFinite(stamp)&&Date.now()-stamp<spec.ms)a.pop();
+ if(a.length<210)throw Error(tf+" completed candles below 210 ("+a.length+").");
+ const age=Date.now()-Date.parse(a.at(-1).time);if(!Number.isFinite(age)||age>spec.ms*4)throw Error(tf+" candles stale.");
+ return a.slice(-512);
 }
-Deno.serve(async(req:Request)=>{
+Deno.serve(async req=>{
  if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
  if(req.method!=="POST")return json({ok:false,error:"Method not allowed"},405);
- const auth=req.headers.get("Authorization")||"";
- if(!auth.startsWith("Bearer "))return json({ok:false,error:"Login diperlukan."},401);
- const td=Deno.env.get("TWELVE_DATA_API_KEY")||"";
- const url=Deno.env.get("KRONOS_API_URL")||"";
- const token=Deno.env.get("KRONOS_SERVICE_TOKEN")||"";
- if(!td)return json({ok:false,error:"TWELVE_DATA_API_KEY belum tersedia."},503);
- if(!url||!token)return json({ok:false,error:"Kronos belum di-deploy. Konfigurasikan KRONOS_API_URL dan KRONOS_SERVICE_TOKEN setelah hosting inference service."},503);
+ if(!req.headers.get("Authorization")?.startsWith("Bearer "))return json({ok:false,error:"Login required."},401);
+ const td=Deno.env.get("TWELVE_DATA_API_KEY")||"",base=Deno.env.get("KRONOS_API_URL")||"",token=Deno.env.get("KRONOS_SERVICE_TOKEN")||"";
+ if(!td)return json({ok:false,error:"TWELVE_DATA_API_KEY missing."},503);
+ if(!base||!token)return json({ok:false,error:"Kronos cloud not configured. Set KRONOS_API_URL and KRONOS_SERVICE_TOKEN in Supabase Edge Function Secrets."},503);
  try{
-  const timeframes=["M5","M15","H1"];
-  const results=await Promise.all(timeframes.map(async tf=>{
-   const cs=await candles(tf,td);
-   const r=await fetch(url.replace(/\/$/,"")+"/forecast",{
-    method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
-    body:JSON.stringify({symbol:"XAUUSD",timeframe:tf,candles:cs}),
-    signal:AbortSignal.timeout(120000)
-   });
-   const d=await r.json();
-   if(!r.ok||!d.ok)throw new Error(tf+": "+String(d.detail||d.error||"Kronos inference gagal").slice(0,220));
-   return d;
-  }));
-  const dirs=results.map(x=>x.direction);
-  const aligned=dirs.every(x=>x===dirs[0])&&dirs[0]!=="WAIT";
-  return json({
-   ok:true,model:"Kronos-base",provider:"self-hosted Kronos inference",
-   symbol:"XAUUSD",source:"Twelve Data XAU/USD aggregate; not HFM broker quote",
-   multi_timeframe:{M5:results[0],M15:results[1],H1:results[2]},
-   agreement:aligned?"ALIGNED":"NO_ALIGNMENT",
-   direction:aligned?dirs[0]:"WAIT",
-   execution:"NONE",confidence:null,
-   note:"Forecast direction is not a calibrated probability or order instruction. MT5 EA is not connected."
-  });
+  const tfs=["M5","M15","H1"],timeframes=await Promise.all(tfs.map(async timeframe=>({timeframe,candles:await fetchBars(timeframe,td)})));
+  const r=await fetch(base.replace(/\/$/,"")+"/forecast-mtf",{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({symbol:"XAUUSD",timeframes}),signal:AbortSignal.timeout(120000)});
+  const d=await r.json();if(!r.ok||!d.ok)throw Error(String(d.detail||d.error||"Kronos inference failed").slice(0,220));
+  const m=d.multi_timeframe||{},count=(tf:string,dir:string)=>Number(m[tf]?.scenario_counts?.[dir]||0);let direction="WAIT";
+  for(const dir of ["BUY","SELL"])if(count("M5",dir)>=4&&count("M15",dir)>=3&&count("H1",dir)>=3){direction=dir;break}
+  return json({ok:true,model:d.model||"NeoQuasar/Kronos-base",symbol:"XAUUSD",source:"Twelve Data XAU/USD aggregate, not HFM broker quote",scenario_count:5,multi_timeframe:m,direction,agreement:direction==="WAIT"?"NO_ALIGNMENT":"ALIGNED",rule:"M5 >=4/5; M15 >=3/5; H1 >=3/5 same direction.",execution:"NONE",confidence:null,note:"Scenario consensus is model-sampling agreement, not calibrated probability or expected win rate. No broker orders are sent."});
  }catch(e){return json({ok:false,error:e instanceof Error?e.message:"Kronos forecast failed."},502)}
 });
