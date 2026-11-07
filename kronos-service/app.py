@@ -1,4 +1,4 @@
-import os, threading
+import os, threading, math
 from datetime import datetime, timedelta
 from typing import Literal
 import pandas as pd
@@ -76,8 +76,10 @@ def frame_for(item):
 def rows_for(pred):
  rows=[]
  for stamp,r in pred.iterrows():
-  o,h,l,c=map(float,(r.open,r.high,r.low,r.close))
-  rows.append({"time":pd.Timestamp(stamp).isoformat(),"open":o,"high":max(h,o,c,l),"low":min(l,o,c),"close":c,"volume":float(r.volume) if "volume" in r and pd.notna(r.volume) else 0})
+  o,h,l,cl=map(float,(r.open,r.high,r.low,r.close))
+  if not all(math.isfinite(v) and v>0 for v in (o,h,l,cl)) or not pd.notna(stamp):
+   raise ValueError("Kronos returned non-finite or non-positive OHLC.")
+  rows.append({"time":pd.Timestamp(stamp).isoformat(),"open":o,"high":max(h,o,cl,l),"low":min(l,o,cl),"close":cl,"volume":float(r.volume) if "volume" in r and pd.notna(r.volume) and math.isfinite(float(r.volume)) else 0})
  if len(rows)!=6: raise ValueError("Invalid Kronos forecast length")
  return rows
 
