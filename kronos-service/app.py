@@ -84,13 +84,13 @@ def rows_for(pred):
  return rows
 
 @app.get("/health")
-def health(): return {"ok":True,"service":"hfm-kronos","model":MODEL_ID,"tokenizer":TOKENIZER_ID,"model_state":_state,"scenario_count":SCENARIOS,"execution":"none"}
+def health(): return {"ok":True,"service":"hfm-kronos","model":MODEL_ID,"tokenizer":TOKENIZER_ID,"model_state":_state,"service_token_configured":bool(SERVICE_TOKEN),"scenario_count":SCENARIOS,"execution":"none"}
 
 @app.post("/forecast-mtf")
 def forecast_mtf(body:RequestBody,authorization:str|None=Header(default=None)):
- import torch
  if not SERVICE_TOKEN or authorization!=f"Bearer {SERVICE_TOKEN}": raise HTTPException(401,"Unauthorized")
  try:
+  import torch
   ordered=sorted(body.timeframes,key=lambda x:("M5","M15","H1").index(x.timeframe))
   p=predictor()
   grouped={k:[] for k in ("M5","M15","H1")}
