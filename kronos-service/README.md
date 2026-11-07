@@ -10,7 +10,7 @@ pinned: false
 
 # HFM Kronos Forecast Service
 
-Official NeoQuasar/Kronos-base. Returns five independently sampled paths for M5/M15/H1.
+Official NeoQuasar Kronos inference API. The free Render Blueprint selects Kronos-small to reduce memory; five independently sampled paths are generated sequentially for M5/M15/H1 to avoid a large batch allocation.
 
 ## Deploy from Android
 1. Open https://huggingface.co/new-space in Chrome. Create Docker Space named hfm-kronos.
@@ -26,7 +26,7 @@ Free CPU hosting can sleep, cold-start or run out of memory/time. Upgrade hardwa
 
 ## Render deployment (free test only)
 
-This repository also includes a root-level `render.yaml` Blueprint for a Render Web Service using the Dockerfile in this folder.
+This repository also includes a root-level `render.yaml` Blueprint for a Render Web Service using the Dockerfile in this folder. It selects `NeoQuasar/Kronos-small` (not Kronos-base) because the free instance has tight memory limits.
 
 1. Open https://dashboard.render.com/blueprints and connect this GitHub repository.
 2. Select the Blueprint named `hfm-kronos` and create the service on the Free plan.
@@ -34,4 +34,4 @@ This repository also includes a root-level `render.yaml` Blueprint for a Render 
 4. After deployment, test `https://YOUR-SERVICE.onrender.com/health`. The service must report `ok:true` and `model_state` will initially be `not_loaded`; the first forecast loads the model.
 5. Set `KRONOS_API_URL` and the exact same `KRONOS_SERVICE_TOKEN` as Supabase Edge Function secrets.
 
-**Important limitations:** Render Free has 512 MB RAM and sleeps after 15 minutes without inbound traffic. Kronos + PyTorch may exceed the free RAM limit, so this configuration is for a deployment/health-check attempt only, not a guarantee that model inference will fit. It is not suitable for 24/7 trading or automatic order execution. Do not treat forecast scenarios as trade signals or win probabilities.
+**Important limitations:** Render Free has 512 MB RAM and sleeps after 15 minutes without inbound traffic. Kronos-small is selected and scenarios run sequentially to reduce memory use, but PyTorch may still exceed the free RAM limit or hit request timeouts. Deployment and inference must be verified on the actual instance. It is not suitable for 24/7 trading or automatic order execution. Do not treat forecast scenarios as trade signals or win probabilities.
